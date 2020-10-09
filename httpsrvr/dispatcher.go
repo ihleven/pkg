@@ -1,37 +1,70 @@
-package web
+package httpsrvr
 
 import (
 	"net/http"
 	"path"
 	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/fatih/color"
 )
 
-func NewDispatcher(notFoundHandler http.Handler) *shiftPathDispatcher {
+func NewDispatcher(notFoundHandler http.Handler, isRoot bool, debug bool) *shiftPathDispatcher {
+
 	routes := make(map[string]http.Handler)
-	// if notFoundHandler == nil {
-	// 	notFoundHandler = http.HandlerFunc(http.NotFound)
-	// }
-	return &shiftPathDispatcher{routes, notFoundHandler}
+
+	return &shiftPathDispatcher{routes, notFoundHandler, isRoot, debug, 0}
 }
 
 type shiftPathDispatcher struct {
 	routes          map[string]http.Handler
 	notFoundHandler http.Handler
+	isRoot          bool
+	debug           bool
+	counter         uint64
 }
 
-func (d shiftPathDispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (d *shiftPathDispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	var head string
-	head, r.URL.Path = shiftPath(r.URL.Path)
+	var (
+		start            time.Time
+		path, head, tail string
+	)
 
+	if d.isRoot {
+		start = time.Now()
+		atomic.AddUint64(&d.counter, 1)
+		path = r.URL.Path
+
+		// log.NewRequest(reqNumber, start, r)
+
+		// values := r.URL.Query()
+		// values.Add("_reqNumber", strconv.FormatInt(reqNumber, 10))
+		// r.URL.RawQuery = values.Encode()
+	}
+
+	head, tail = shiftPath(r.URL.Path)
+	// if d.debug {
+	// 	color.Green(" * dispatching: %s -> %s\n", head, tail)
+	// }
 	route, ok := d.routes[head]
 	switch {
 	case ok:
+		r.URL.Path = tail
 		route.ServeHTTP(w, r)
+
 	case d.notFoundHandler != nil:
 		d.notFoundHandler.ServeHTTP(w, r)
 	default:
 		http.NotFound(w, r)
+	}
+
+	if d.isRoot {
+		requestCount := atomic.LoadUint64(&d.counter)
+		if d.debug {
+			color.Green(" * %s   => %v,  request count: %d\n", path, time.Since(start), requestCount)
+		}
 	}
 }
 
@@ -52,7 +85,7 @@ func (d *shiftPathDispatcher) registerSubRoute(head, tail string, handler http.H
 
 	subDispatcher, ok := d.routes[head].(*shiftPathDispatcher)
 	if !ok {
-		subDispatcher = NewDispatcher(d.routes[head])
+		subDispatcher = NewDispatcher(d.routes[head], false, d.debug)
 		d.routes[head] = subDispatcher
 	}
 	subDispatcher.Register(tail, handler)
