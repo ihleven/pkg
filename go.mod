@@ -3,9 +3,11 @@ module github.com/ihleven/pkg
 go 1.15
 
 require (
+	github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f
 	github.com/disintegration/imaging v1.6.2
 	github.com/fatih/color v1.9.0
 	github.com/georgysavva/scany v0.2.5
+	github.com/gorilla/schema v1.2.0
 	github.com/ihleven/errors v0.1.0
 	github.com/jackc/pgx v3.6.2+incompatible
 	github.com/jackc/pgx/v4 v4.9.0

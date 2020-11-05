@@ -44,7 +44,7 @@ func NewRepo() (*Repo, error) {
 
 func (r *Repo) LoadBilder() ([]Bild, error) {
 
-	stmt := "SELECT id,jahr,name,technik,material,format,breite,hoehe,flaeche,foto_id FROM bilder ORDER BY id"
+	stmt := "SELECT * FROM bilder ORDER BY id"
 
 	var bilder []Bild
 	err := r.Select(&bilder, stmt)
@@ -59,7 +59,7 @@ func (r *Repo) LoadBilder() ([]Bild, error) {
 
 func (r *Repo) LoadBild(id int) (*Bild, error) {
 
-	stmt := "SELECT id,jahr,name,technik,material,format,breite,hoehe,flaeche,foto_id FROM bilder WHERE id=$1"
+	stmt := "SELECT id,jahr,name,technik,material,format,breite,hoehe,flaeche,foto_id,beschreibung,kommentar FROM bilder WHERE id=$1"
 
 	var bild Bild
 	err := pgxscan.Get(r.ctx, r.dbpool, &bild, stmt, id)
@@ -74,13 +74,26 @@ func (r *Repo) LoadBild(id int) (*Bild, error) {
 	return &bild, nil
 }
 
-func (r *Repo) InsertFoto(id int, path, caption string, width, height int) (int, error) {
+func (r *Repo) SaveBild(id int, bild *Bild) error {
 
-	stmt := "INSERT INTO fotos (bild_id,path,caption,width,height) VALUES ($1,$2,$3,$4,$5) RETURNING id"
+	stmt := "UPDATE bilder set  name=$2, jahr=$3, technik=$4, material=$5, format=$6, breite=$7, hoehe=$8, flaeche=$9, beschreibung=$10, kommentar=$11, foto_id=$12 where id=$1"
 
-	row := r.dbpool.QueryRow(r.ctx, stmt, id, path, caption, width, height)
+	i, err := r.dbpool.Exec(r.ctx, stmt, id, bild.Name, bild.Jahr, bild.Technik, bild.Material, bild.Format, bild.Breite, bild.Höhe, bild.Fläche, bild.Beschreibung, bild.Kommentar, bild.IndexFotoID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("i:", i, err)
+	return err
+}
+
+func (r *Repo) InsertFoto(id int, path, caption string, width, height int, format string) (int, error) {
+
+	stmt := "INSERT INTO fotos (bild_id,path,caption,width,height,format) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id"
+
+	row := r.dbpool.QueryRow(r.ctx, stmt, id, path, caption, width, height, format)
 	var returnid int
 	err := row.Scan(&returnid)
-	return returnid, errors.Wrap(err, "Could not insert bild %v", id)
+	return returnid, errors.Wrap(err, "Could not insert foto %v", id)
 
 }

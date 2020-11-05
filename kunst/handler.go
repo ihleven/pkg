@@ -10,13 +10,17 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"text/template"
+	"time"
 
 	// png
 	_ "image/png"
 
 	"github.com/disintegration/imaging"
+	"github.com/gorilla/schema"
 	"github.com/ihleven/errors"
 )
 
@@ -65,12 +69,38 @@ func Bilder(h *Handler) http.HandlerFunc {
 	}
 }
 
+var decoder = schema.NewDecoder()
+
 func BildDetail(h *Handler) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
+
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		i, _ := strconv.Atoi(r.URL.Path[1:])
-		bilder, err := h.repo.LoadBild(i)
+
+		id, err := strconv.Atoi(r.URL.Path[1:])
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+
+		if r.Method == http.MethodPost {
+			var bild Bild
+			err := r.ParseMultipartForm(0)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			fmt.Println("r.PostForm", r.PostForm)
+			err = decoder.Decode(&bild, r.PostForm)
+			if err != nil {
+				fmt.Println("ERROR", err.Error())
+			}
+			err = h.repo.SaveBild(id, &bild)
+
+			fmt.Println("POST", r.FormValue("name"), bild, err)
+		}
+
+		bilder, err := h.repo.LoadBild(id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -102,6 +132,8 @@ func UploadFile(h *Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,PATCH,OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
 
 		r.ParseMultipartForm(10 << 20)
 
@@ -126,13 +158,14 @@ func UploadFile(h *Handler) http.HandlerFunc {
 			return
 		}
 
-		config, err := getConfig(file)
+		config, format, err := getConfig(file)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 
-		fotoID, err := h.repo.InsertFoto(bildID, name, "", config.Width, config.Height)
+		// TRANSAKTION: cancel wenn bild nicht gespeichert werden kann
+		fotoID, err := h.repo.InsertFoto(bildID, strings.TrimPrefix(name, "temp-images/"), "", config.Width, config.Height, format)
 		if err != nil {
 			fmt.Fprintln(w, "err:", err)
 			return
@@ -148,6 +181,40 @@ func UploadFile(h *Handler) http.HandlerFunc {
 	}
 }
 func save(file io.ReadSeeker, header *multipart.FileHeader, id int, path string) (string, error) {
+	var f *os.File
+	var err error
+	nconflict := 0
+	ts := time.Now().Format("060102-150405")
+	for i := 0; i < 10000; i++ {
+		name := fmt.Sprintf("%s/%d-%s-%s", path, id, ts, header.Filename)
+		f, err = os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
+		if os.IsExist(err) {
+			if nconflict++; nconflict > 10 {
+				fmt.Println("nconflict:", nconflict)
+			}
+			continue
+		}
+		defer f.Close()
+		break
+	}
+
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return "", err
+	}
+
+	n, err := f.Write(bytes)
+	if err != nil {
+		return "", err
+	}
+	if n != int(header.Size) {
+		return "", errors.New("written bytes and upload file size differ: %v != %v", n, header.Size)
+	}
+
+	return f.Name(), nil
+}
+
+func saveTemp(file io.ReadSeeker, header *multipart.FileHeader, id int, path string) (string, error) {
 	suffixes, err := mime.ExtensionsByType(header.Header["Content-Type"][0])
 	suffix := suffixes[0]
 
@@ -173,16 +240,16 @@ func save(file io.ReadSeeker, header *multipart.FileHeader, id int, path string)
 	return tempfile.Name(), nil
 }
 
-func getConfig(file io.ReadSeeker) (*image.Config, error) {
+func getConfig(file io.ReadSeeker) (*image.Config, string, error) {
 	if _, err := file.Seek(0, 0); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	config, format, err := image.DecodeConfig(file)
 	if err != nil {
 		errors.Wrap(err, "error in DecodeConfig")
 	}
 	fmt.Printf("format: %v\n", format)
-	return &config, nil
+	return &config, format, nil
 }
 
 func generateThumbnail(file io.ReadSeeker, id int, prefix string) error {
