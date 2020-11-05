@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hello Bulma!</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.1/css/bulma.min.css">
+    <script defer src="https://use.fontawesome.com/releases/v5.14.0/js/all.js"></script>
+    <style>
+      table {
+        border: 1px solid black;
+      }
+    </style>
+</head>
+<body>
+
+    <form method="POST" action="/upload" enctype="multipart/form-data">     
+      <input type="file" name="myFile" />
+        
+        <input type="submit" value="upload" />
+    </form>
+  
+
+    <table class="table">
+      <caption>aus Redis gelesen: {{.modified.Format "Jan 2, 15:04:05"}}  </caption>
+      <thead>
+        <tr>
+          <th class="">id</th>
+          <th class="px-4 py-2">Name</th>
+          <th class="px-4 py-2">Jahr</th>
+          <th class="px-4 py-2">Material</th>
+          <th class="px-4 py-2">Technik</th>
+          <th class="px-4 py-2">Format</th>
+          <th class="px-4 py-2">Fläche</th>
+          <th class="px-4 py-2">Foto</th>
+        </tr>
+      </thead>
+      <tbody>
+    {{range .bilder}}
+    <tr>
+        <th class="border px-4 py-2">{{.ID}}</th> 
+        <td class="border px-4 py-2">{{ .Name }} </td> 
+        <td class="border px-4 py-2">{{ .Jahr }} </td>
+        <!-- <td class="border px-4 py-2">{{.Datum.Format "Mon, Jan 2, 15:04:05"}} </td> -->
+        <td class="border px-4 py-2">{{.material}} </td>
+        <td class="border px-4 py-2">{{.Technik}} </td>
+        <td class="border px-4 py-2">{{.Breite}}x{{.Höhe}} </td>
+        <td class="border px-4 py-2">{{ .Fläche}} </td>
+        <td class="border px-4 py-2" >{{ .IndexFotoID }}</td>
+    </tr>
+    {{end}}
+</table>
+</div>
+</body>
+</html>
