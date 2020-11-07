@@ -44,7 +44,7 @@ func NewRepo() (*Repo, error) {
 
 func (r *Repo) LoadBilder() ([]Bild, error) {
 
-	stmt := "SELECT * FROM bilder ORDER BY id"
+	stmt := "SELECT * FROM bilder ORDER BY id DESC"
 
 	var bilder []Bild
 	err := r.Select(&bilder, stmt)
@@ -52,7 +52,6 @@ func (r *Repo) LoadBilder() ([]Bild, error) {
 		fmt.Println("error:", err)
 		return nil, err
 	}
-	fmt.Println("bilder:", bilder)
 
 	return bilder, nil
 }
@@ -72,6 +71,16 @@ func (r *Repo) LoadBild(id int) (*Bild, error) {
 		return nil, err
 	}
 	return &bild, nil
+}
+
+func (r *Repo) InsertBild(bild *Bild) (int, error) {
+
+	stmt := "INSERT INTO bilder (name, jahr, technik, material, format, breite, hoehe, flaeche, beschreibung, kommentar, foto_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id"
+
+	row := r.dbpool.QueryRow(r.ctx, stmt, bild.Name, bild.Jahr, bild.Technik, bild.Material, bild.Format, bild.Breite, bild.Höhe, bild.Fläche, bild.Beschreibung, bild.Kommentar, bild.IndexFotoID)
+	var returnid int
+	err := row.Scan(&returnid)
+	return returnid, errors.Wrap(err, "Could not insert bild %v", bild)
 }
 
 func (r *Repo) SaveBild(id int, bild *Bild) error {

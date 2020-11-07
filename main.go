@@ -12,11 +12,11 @@ func main() {
 	fs := http.FileServer(http.Dir("./temp-images"))
 	srv := httpsrvr.NewServer("", 8000, false, false, nil)
 	handler := kunst.NewHandler()
-	srv.Register("/", handler)
-	srv.Register("/upload", kunst.UploadFile(handler))
-	srv.Register("/bilder", kunst.Bilder(handler))
-	srv.Register("/bild", kunst.BildDetail(handler))
-	srv.Register("/media", http.StripPrefix("/", fs))
+	srv.Register("/api/bilder", handler)
+	srv.Register("/api/upload", kunst.UploadFile(handler))
+	// srv.Register("/bilder", kunst.Bilder(handler)) // template
+	srv.Register("/api/bild", kunst.BildDetail(handler))
+	srv.Register("/api/media", http.StripPrefix("/", fs))
 
 	srv.ListenAndServe()
 

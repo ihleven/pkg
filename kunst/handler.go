@@ -75,12 +75,22 @@ func BildDetail(h *Handler) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		addCorsHeader(w)
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// w.Header().Set("Access-Control-Allow-Origin", "*")
 
 		id, err := strconv.Atoi(r.URL.Path[1:])
 		if err != nil {
-			http.Error(w, err.Error(), 400)
-			return
+			if r.URL.Path[1:] == "neu" {
+				id = 0
+			} else {
+				http.Error(w, err.Error(), 400)
+				return
+			}
 		}
 
 		if r.Method == http.MethodPost {
@@ -90,14 +100,18 @@ func BildDetail(h *Handler) http.HandlerFunc {
 				http.Error(w, err.Error(), 400)
 				return
 			}
-			fmt.Println("r.PostForm", r.PostForm)
 			err = decoder.Decode(&bild, r.PostForm)
 			if err != nil {
 				fmt.Println("ERROR", err.Error())
 			}
-			err = h.repo.SaveBild(id, &bild)
-
-			fmt.Println("POST", r.FormValue("name"), bild, err)
+			if id == 0 {
+				id, err = h.repo.InsertBild(&bild)
+			} else {
+				err = h.repo.SaveBild(id, &bild)
+			}
+			if err != nil {
+				fmt.Println("ERROR", err.Error())
+			}
 		}
 
 		bilder, err := h.repo.LoadBild(id)
@@ -270,4 +284,14 @@ func generateThumbnail(file io.ReadSeeker, id int, prefix string) error {
 		return err
 	}
 	return nil
+}
+
+func addCorsHeader(res http.ResponseWriter) {
+	headers := res.Header()
+	headers.Add("Access-Control-Allow-Origin", "*")
+	headers.Add("Vary", "Origin")
+	headers.Add("Vary", "Access-Control-Request-Method")
+	headers.Add("Vary", "Access-Control-Request-Headers")
+	headers.Add("Access-Control-Allow-Headers", "Content-Type, Origin, Accept, token")
+	headers.Add("Access-Control-Allow-Methods", "GET, POST,OPTIONS")
 }
