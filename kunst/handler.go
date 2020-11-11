@@ -247,7 +247,7 @@ func UploadFoto(db *Repo, idstr string, r *http.Request) (*Foto, error) {
 		return nil, err
 	}
 
-	err = generateThumbnail100(file, fotoID, config.Width, config.Height, media+"/thumbs/100/")
+	err = GenerateThumbnail100(file, fotoID, config.Width, config.Height, media+"/thumbs/100/")
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +348,7 @@ func generateThumbnail(file io.ReadSeeker, id int, prefix string) error {
 	return nil
 }
 
-func generateThumbnail100(file io.ReadSeeker, id, width, height int, prefix string) error {
+func GenerateThumbnail100(file io.ReadSeeker, id, width, height int, prefix string) error {
 
 	if _, err := file.Seek(0, 0); err != nil {
 		return err

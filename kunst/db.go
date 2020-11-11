@@ -121,3 +121,16 @@ func (r *Repo) LoadFoto(id int) (*Foto, error) {
 
 	return &foto, nil
 }
+
+func (r *Repo) LoadFotos() ([]Foto, error) {
+
+	stmt := "SELECT * FROM foto ORDER BY id"
+
+	var fotos []Foto
+	err := pgxscan.Select(r.ctx, r.dbpool, &fotos, stmt)
+	if err != nil {
+		return nil, err
+	}
+
+	return fotos, nil
+}
