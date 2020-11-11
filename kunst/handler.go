@@ -6,14 +6,12 @@ import (
 	"image"
 	"io"
 	"io/ioutil"
-	"log"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	// png
@@ -22,114 +20,174 @@ import (
 	"github.com/disintegration/imaging"
 	"github.com/gorilla/schema"
 	"github.com/ihleven/errors"
+
+	"github.com/disintegration/imageorient"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 )
 
-func NewHandler() *Handler {
-	repo, _ := NewRepo()
-	return &Handler{repo: repo}
-}
+var media string
 
-type Handler struct {
-	repo *Repo
-}
+func KunstHandler(database, medien string) http.Handler {
+	media = medien
+	repo, _ := NewRepo(database)
 
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("asfdasdfasdf")
 
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	})
+	r.Get("/bilder", func(w http.ResponseWriter, r *http.Request) {
+		bilder, _ := BilderList(repo)
+		fmt.Println("bilder", bilder)
+		bytes, _ := json.MarshalIndent(bilder, "", "    ")
+		w.Write(bytes)
 
-	bilder, err := h.repo.LoadBilder()
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	bytes, _ := json.MarshalIndent(bilder, "", "    ")
-
-	w.Write(bytes)
-}
-
-func Bilder(h *Handler) http.HandlerFunc {
-	tmpl, err := template.ParseFiles("tmplt/index.html")
-	if err != nil {
-		log.Fatal(err)
-	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		bilder, err := h.repo.LoadBilder()
+	})
+	r.Post("/bilder", func(w http.ResponseWriter, r *http.Request) {
+		bild, err := BilderUpdate(repo, "", r)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
+			w.Write([]byte(errors.Wrap(err, "error:").Error()))
 		}
-
-		// bytes, _ := json.MarshalIndent(bilder, "", "    ")
-		// w.Write(bytes)
-		err = tmpl.Execute(w, map[string]interface{}{"bilder": bilder})
+		bytes, err := json.MarshalIndent(bild, "", "    ")
 		if err != nil {
-			w.Write([]byte(errors.Wrap(err, "Template error:").Error()))
+			w.Write([]byte(errors.Wrap(err, "error:").Error()))
 		}
-	}
-}
-
-var decoder = schema.NewDecoder()
-
-func BildDetail(h *Handler) http.HandlerFunc {
-
-	return func(w http.ResponseWriter, r *http.Request) {
-
-		addCorsHeader(w)
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		// w.Header().Set("Access-Control-Allow-Origin", "*")
-
-		id, err := strconv.Atoi(r.URL.Path[1:])
-		if err != nil {
-			if r.URL.Path[1:] == "neu" {
-				id = 0
-			} else {
-				http.Error(w, err.Error(), 400)
-				return
-			}
-		}
-
-		if r.Method == http.MethodPost {
-			var bild Bild
-			err := r.ParseMultipartForm(0)
-			if err != nil {
-				http.Error(w, err.Error(), 400)
-				return
-			}
-			err = decoder.Decode(&bild, r.PostForm)
-			if err != nil {
-				fmt.Println("ERROR", err.Error())
-			}
-			if id == 0 {
-				id, err = h.repo.InsertBild(&bild)
-			} else {
-				err = h.repo.SaveBild(id, &bild)
-			}
-			if err != nil {
-				fmt.Println("ERROR", err.Error())
-			}
-		}
-
-		bilder, err := h.repo.LoadBild(id)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-
+		w.Write(bytes)
+	})
+	r.Get("/bilder/{ID}", func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "ID")
+		bilder, err := BilderDetail(repo, id, r)
+		fmt.Println("bild =>", id, bilder, err)
 		bytes, err := json.MarshalIndent(bilder, "", "    ")
 		if err != nil {
 			w.Write([]byte(errors.Wrap(err, "error:").Error()))
 		}
 		w.Write(bytes)
+	})
+	r.Post("/bilder/{ID}", func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "ID")
+		bild, err := BilderUpdate(repo, id, r)
+		fmt.Println("BilderUpdate:", id, bild, err)
+		bytes, err := json.MarshalIndent(bild, "", "    ")
+		if err != nil {
+			w.Write([]byte(errors.Wrap(err, "error:").Error()))
+		}
+		w.Write(bytes)
+	})
+	r.Post("/bilder/{ID}/fotos", func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "ID")
+		foto, err := UploadFoto(repo, id, r)
+		fmt.Println("foto", foto, err)
+		bytes, err := json.MarshalIndent(foto, "", "    ")
+		if err != nil {
+			w.Write([]byte(errors.Wrap(err, "error:").Error()))
+		}
+		w.Write(bytes)
+	})
+	return r
+}
+
+func BilderList(db *Repo) ([]Bild, error) {
+
+	bilder, err := db.LoadBilder()
+	if err != nil {
+		return nil, err
 	}
+
+	return bilder, nil
+}
+
+var decoder = schema.NewDecoder()
+
+func BilderDetail(db *Repo, idstr string, r *http.Request) (*Bild, error) {
+
+	// addCorsHeader(w)
+	// if r.Method == "OPTIONS" {
+	// 	w.WriteHeader(http.StatusOK)
+	// 	return
+	// }
+
+	// w.Header().Set("Access-Control-Allow-Origin", "*")
+	fmt.Println("id", idstr)
+	id, err := strconv.Atoi(idstr)
+	if err != nil {
+		// if idstr == "neu" {
+		id = 0
+		fmt.Println("id", id)
+		// } else {
+		// 	return nil, errors.NewWithCode(400, "Invalid id")
+		// }
+	}
+
+	if r.Method == http.MethodPost {
+		err := r.ParseMultipartForm(0)
+		if err != nil {
+			return nil, err
+		}
+		var bild Bild
+		err = decoder.Decode(&bild, r.PostForm)
+		if err != nil {
+			return nil, errors.Wrap(err, "Error decoding form")
+		}
+		if id == 0 {
+			id, err = db.InsertBild(&bild)
+		} else {
+			err = db.SaveBild(id, &bild)
+		}
+		if err != nil {
+			return nil, errors.Wrap(err, "Error db ")
+		}
+	}
+	fmt.Println("iasdf")
+
+	bild, err := db.LoadBild(id)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error loading bild %v", id)
+	}
+
+	return bild, nil
+
+}
+
+func BilderUpdate(db *Repo, idstr string, r *http.Request) (*Bild, error) {
+
+	err := r.ParseMultipartForm(0)
+	if err != nil {
+		return nil, err
+	}
+
+	var bild Bild
+	err = decoder.Decode(&bild, r.PostForm)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error decoding form")
+	}
+
+	id, err := strconv.Atoi(idstr)
+	if err == nil {
+		err = db.SaveBild(id, &bild)
+		if err != nil {
+			return nil, errors.Wrap(err, "Error saving bild %v", id)
+		}
+	} else {
+		id, err = db.InsertBild(&bild)
+		if err != nil {
+			return nil, errors.Wrap(err, "Error inserting bild %v", id)
+		}
+	}
+
+	b, err := db.LoadBild(id)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error loading bild %v", id)
+	}
+
+	return b, nil
+
 }
 
 func UploadFileBinary(w http.ResponseWriter, r *http.Request) {
-	file, err := ioutil.TempFile("temp-images", "binary-*")
+	file, err := ioutil.TempFile(media, "binary-*")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -141,59 +199,63 @@ func UploadFileBinary(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("%d bytes reveived", n)))
 }
 
-func UploadFile(h *Handler) http.HandlerFunc {
+func UploadFoto(db *Repo, idstr string, r *http.Request) (*Foto, error) {
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	// w.Header().Set("Access-Control-Allow-Origin", "*")
+	// w.Header().Set("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,PATCH,OPTIONS")
+	// w.Header().Set("Access-Control-Allow-Headers", "*")
 
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,PATCH,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "*")
+	r.ParseMultipartForm(10 << 20)
 
-		r.ParseMultipartForm(10 << 20)
-
-		bildID, err := strconv.Atoi(r.Form.Get("id"))
-		if err != nil {
-			fmt.Println(err)
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		fmt.Printf("File upload for bild %v\n", bildID)
-
-		file, header, err := r.FormFile("photo")
-		if err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		defer file.Close()
-
-		name, err := save(file, header, bildID, "temp-images")
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-
-		config, format, err := getConfig(file)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-
-		// TRANSAKTION: cancel wenn bild nicht gespeichert werden kann
-		fotoID, err := h.repo.InsertFoto(bildID, strings.TrimPrefix(name, "temp-images/"), "", config.Width, config.Height, format)
-		if err != nil {
-			fmt.Fprintln(w, "err:", err)
-			return
-		}
-
-		err = generateThumbnail(file, fotoID, "temp-images/thumbs/")
-		if err != nil {
-			fmt.Fprintln(w, "err:", err)
-			return
-		}
-
-		fmt.Fprintf(w, "succes uplooad %s", name)
+	bildID, err := strconv.Atoi(r.Form.Get("id"))
+	if err != nil {
+		return nil, err
 	}
+	fmt.Printf("File upload for bild %v --- %s\n", bildID, idstr)
+
+	file, header, err := r.FormFile("photo")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	name, err := save(file, header, bildID, media)
+	if err != nil {
+		return nil, err
+	}
+
+	config, format, err := getConfig(file)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("config:", config, format, err)
+
+	// TRANSAKTION: cancel wenn bild nicht gespeichert werden kann
+	fotoID, err := db.InsertFoto(
+		bildID, 0, header.Filename, 0, strings.TrimPrefix(name, media+"/"),
+		format, config.Width, config.Height, time.Now(), "Caption", "kommentar",
+	)
+	if err != nil {
+		fmt.Println("insert error:", err)
+
+		return nil, err
+	}
+	fmt.Println("fotoID:", fotoID)
+
+	err = generateThumbnail(file, fotoID, media+"/thumbs/")
+	if err != nil {
+		return nil, err
+	}
+
+	err = generateThumbnail100(file, fotoID, config.Width, config.Height, media+"/thumbs/100/")
+	if err != nil {
+		return nil, err
+	}
+
+	foto, err := db.LoadFoto(fotoID)
+	return foto, err
 }
+
 func save(file io.ReadSeeker, header *multipart.FileHeader, id int, path string) (string, error) {
 	var f *os.File
 	var err error
@@ -258,7 +320,7 @@ func getConfig(file io.ReadSeeker) (*image.Config, string, error) {
 	if _, err := file.Seek(0, 0); err != nil {
 		return nil, "", err
 	}
-	config, format, err := image.DecodeConfig(file)
+	config, format, err := imageorient.DecodeConfig(file)
 	if err != nil {
 		errors.Wrap(err, "error in DecodeConfig")
 	}
@@ -281,6 +343,43 @@ func generateThumbnail(file io.ReadSeeker, id int, prefix string) error {
 	path := fmt.Sprintf("%s%d.png", prefix, id)
 	err = imaging.Save(dst, path)
 	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func generateThumbnail100(file io.ReadSeeker, id, width, height int, prefix string) error {
+
+	if _, err := file.Seek(0, 0); err != nil {
+		return err
+	}
+	// img, _, err := image.Decode(file)
+	img, _, err := imageorient.Decode(file)
+	if err != nil {
+		return err
+	}
+
+	b := img.Bounds()
+	width = b.Max.X
+	height = b.Max.Y
+
+	// fmt.Println("width = ", width, height)
+
+	if width < height {
+		height = 100 * height / width
+		width = 100
+	} else {
+		width = 100 * width / height
+		height = 100
+	}
+	// dst = imaging.Thumbnail(img, width, height, imaging.CatmullRom)
+	dst := imaging.Resize(img, width, height, imaging.Lanczos)
+	path := fmt.Sprintf("%s%d.png", prefix, id)
+	fmt.Println(width, height, path)
+	err = imaging.Save(dst, path)
+	if err != nil {
+		fmt.Println("saving error:", dst, err)
+
 		return err
 	}
 	return nil

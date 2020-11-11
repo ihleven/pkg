@@ -3,11 +3,28 @@ package kunst
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/georgysavva/scany/pgxscan"
 	"github.com/ihleven/errors"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
+
+func NewRepo(database string) (*Repo, error) {
+
+	ctx := context.Background()
+	dbpool, err := pgxpool.Connect(ctx, fmt.Sprintf("postgresql://%s@localhost:5432/%s", database, database))
+	if err != nil {
+		return nil, errors.Wrap(err, "Unable to connect to database: %q", database)
+	}
+
+	repo := Repo{
+		ctx:    ctx,
+		dbpool: dbpool,
+	}
+
+	return &repo, nil
+}
 
 type Repo struct {
 	ctx    context.Context
@@ -26,30 +43,14 @@ func (r *Repo) Select(dst interface{}, query string, args ...interface{}) error 
 	return nil
 }
 
-func NewRepo() (*Repo, error) {
-
-	ctx := context.Background()
-	dbpool, err := pgxpool.Connect(ctx, "postgresql://mi@localhost:5432/mi")
-	if err != nil {
-		return nil, errors.Wrap(err, "Unable to connect to database: %q", "mi")
-	}
-
-	repo := Repo{
-		ctx:    ctx,
-		dbpool: dbpool,
-	}
-
-	return &repo, nil
-}
-
 func (r *Repo) LoadBilder() ([]Bild, error) {
 
-	stmt := "SELECT * FROM bilder ORDER BY id DESC"
+	stmt := "SELECT * FROM bild ORDER BY id DESC"
 
 	var bilder []Bild
 	err := r.Select(&bilder, stmt)
+	fmt.Println(bilder, err)
 	if err != nil {
-		fmt.Println("error:", err)
 		return nil, err
 	}
 
@@ -58,15 +59,15 @@ func (r *Repo) LoadBilder() ([]Bild, error) {
 
 func (r *Repo) LoadBild(id int) (*Bild, error) {
 
-	stmt := "SELECT id,jahr,name,technik,material,format,breite,hoehe,flaeche,foto_id,beschreibung,kommentar FROM bilder WHERE id=$1"
+	stmt := "SELECT * FROM bild WHERE id=$1"
 
-	var bild Bild
+	bild := Bild{Fotos: make([]Foto, 0)}
 	err := pgxscan.Get(r.ctx, r.dbpool, &bild, stmt, id)
 	if err != nil {
 		return nil, err
 	}
 
-	err = r.Select(&bild.Fotos, "SELECT id, path, caption, width, height FROM fotos WHERE bild_id=$1", id)
+	err = r.Select(&bild.Fotos, "SELECT * FROM foto WHERE bild_id=$1", id)
 	if err != nil {
 		return nil, err
 	}
@@ -75,9 +76,9 @@ func (r *Repo) LoadBild(id int) (*Bild, error) {
 
 func (r *Repo) InsertBild(bild *Bild) (int, error) {
 
-	stmt := "INSERT INTO bilder (name, jahr, technik, material, format, breite, hoehe, flaeche, beschreibung, kommentar, foto_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id"
+	stmt := "INSERT INTO bild (titel, jahr, technik, traeger, hoehe, breite, tiefe, flaeche, foto_id, anmerkungen, kommentar, ordnung, phase) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id"
 
-	row := r.dbpool.QueryRow(r.ctx, stmt, bild.Name, bild.Jahr, bild.Technik, bild.Material, bild.Format, bild.Breite, bild.Höhe, bild.Fläche, bild.Beschreibung, bild.Kommentar, bild.IndexFotoID)
+	row := r.dbpool.QueryRow(r.ctx, stmt, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Überordnung, bild.Schaffensphase)
 	var returnid int
 	err := row.Scan(&returnid)
 	return returnid, errors.Wrap(err, "Could not insert bild %v", bild)
@@ -85,24 +86,38 @@ func (r *Repo) InsertBild(bild *Bild) (int, error) {
 
 func (r *Repo) SaveBild(id int, bild *Bild) error {
 
-	stmt := "UPDATE bilder set  name=$2, jahr=$3, technik=$4, material=$5, format=$6, breite=$7, hoehe=$8, flaeche=$9, beschreibung=$10, kommentar=$11, foto_id=$12 where id=$1"
+	stmt := "UPDATE bild set  titel=$2, jahr=$3, technik=$4, traeger=$5, hoehe=$6, breite=$7, tiefe=$8, flaeche=$9, foto_id=$10, anmerkungen=$11, kommentar=$12, ordnung=$13, phase=$14 where id=$1"
 
-	i, err := r.dbpool.Exec(r.ctx, stmt, id, bild.Name, bild.Jahr, bild.Technik, bild.Material, bild.Format, bild.Breite, bild.Höhe, bild.Fläche, bild.Beschreibung, bild.Kommentar, bild.IndexFotoID)
+	i, err := r.dbpool.Exec(r.ctx, stmt, id, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Überordnung, bild.Schaffensphase)
 	if err != nil {
 		return err
 	}
+	fmt.Println(bild.Titel)
 
 	fmt.Println("i:", i, err)
 	return err
 }
 
-func (r *Repo) InsertFoto(id int, path, caption string, width, height int, format string) (int, error) {
+func (r *Repo) InsertFoto(id, index int, name string, size int, path, format string, width, height int, taken time.Time, caption, kommentar string) (int, error) {
 
-	stmt := "INSERT INTO fotos (bild_id,path,caption,width,height,format) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id"
+	stmt := "INSERT INTO foto (bild_id,index,name,size,uploaded,path,format,width,height,taken,caption,kommentar) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id"
 
-	row := r.dbpool.QueryRow(r.ctx, stmt, id, path, caption, width, height, format)
+	row := r.dbpool.QueryRow(r.ctx, stmt, id, index, name, size, time.Now(), path, format, width, height, taken, caption, kommentar)
 	var returnid int
 	err := row.Scan(&returnid)
 	return returnid, errors.Wrap(err, "Could not insert foto %v", id)
 
+}
+
+func (r *Repo) LoadFoto(id int) (*Foto, error) {
+
+	stmt := "SELECT * FROM foto WHERE id=$1"
+
+	var foto Foto
+	err := pgxscan.Get(r.ctx, r.dbpool, &foto, stmt, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &foto, nil
 }
