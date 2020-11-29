@@ -60,6 +60,7 @@ type Bild struct {
 	Schaffensphase string  `db:"phase"       json:"phase"`                      // Natur
 	Fotos          []Foto  `db:"-"           json:"fotos" `
 	IndexFotoID    int     `db:"foto_id"     json:"foto_id" schema:"foto_id"` //
+	IndexFoto      *Foto   `db:"foto"     json:"foto" schema:"-"`             //
 	// Systematik     string `db:"-"    json:"sytematik"`    //
 	// Ordnung        string `db:"-"    json:"ordnung"`      //
 	// Hauptfoto   *Foto

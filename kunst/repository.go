@@ -155,15 +155,29 @@ func (r *Repo) LoadSerie(id int) (*Serie, error) {
 
 func (r *Repo) LoadBilder() ([]Bild, error) {
 
-	stmt := "SELECT * FROM bild ORDER BY id DESC"
-
 	var bilder []Bild
-	err := r.Select(&bilder, stmt)
-	fmt.Println(bilder, err)
+	err := r.Select(&bilder, "SELECT * FROM bild ORDER BY id DESC")
 	if err != nil {
 		return nil, err
 	}
+	indexByID := make(map[int]int)
+	for i, bild := range bilder {
+		indexByID[bild.ID] = i
+	}
 
+	var fotos []Foto
+	err = r.Select(&fotos, "SELECT * FROM foto WHERE id IN (SELECT foto_id FROM bild)")
+	if err != nil {
+		return nil, err
+	}
+	for i, foto := range fotos {
+		fmt.Println("LoadBilder:", i, foto, indexByID[foto.BildID])
+		bilder[indexByID[foto.BildID]].IndexFoto = &fotos[i]
+	}
+	for i, _ := range bilder {
+		fmt.Println(i, bilder[i].IndexFoto)
+	}
+	fmt.Println(indexByID)
 	return bilder, nil
 }
 
