@@ -37,7 +37,7 @@ func main() {
 	// 	fmt.Printf("%+v\n", err)
 	// }
 
-	hdclient := hidrive.NewClient(oap)
+	hdclient := hidrive.NewClient(oap, "/users/matt.ihle/wolfgang-ihle")
 	hd := hidrive.NewDrive(oap, hidrive.PrefixPath("/users/matt.ihle/wolfgang-ihle"))
 	// wdrive := hidrive.NewDrive(oap, "wolfgang-ihle")
 

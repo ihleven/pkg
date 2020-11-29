@@ -62,6 +62,12 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 			http.Error(w, errors.Wrap(err, "Couldn‘t insert ausstellung: %v", ausstellung).Error(), errors.Code(err))
 			return
 		}
+		dir, err := hdclient.Mkdir("ausstellungen", strconv.Itoa(id))
+		fmt.Println("dir created:", dir, errors.Code(err))
+		if err != nil && errors.Code(err) != 409 { // 409 wenn dir ex.
+			http.Error(w, err.Error(), 500)
+			return
+		}
 		ausstellung, err = repo.LoadAusstellung(id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)

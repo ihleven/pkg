@@ -13,7 +13,7 @@ import (
 )
 
 // NewClient creates a new hidrive client
-func NewClient(oap *OAuth2Prov) *HiDriveClient {
+func NewClient(oap *OAuth2Prov, prefix string) *HiDriveClient {
 
 	var HiDriveClient = HiDriveClient{
 		Client: http.Client{
@@ -21,6 +21,7 @@ func NewClient(oap *OAuth2Prov) *HiDriveClient {
 		},
 		auth:    oap, // NewAuthProvider("", ""),
 		baseURL: "https://api.hidrive.strato.com/2.1",
+		prefix:  prefix,
 	}
 	return &HiDriveClient
 }
@@ -29,6 +30,7 @@ type HiDriveClient struct {
 	http.Client
 	auth    *OAuth2Prov
 	baseURL string
+	prefix  string
 }
 
 func (c *HiDriveClient) UploadFile(folder string, body io.Reader, name string, modtime string) (*Meta, error) {

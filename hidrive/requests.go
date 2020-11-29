@@ -2,7 +2,9 @@ package hidrive
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
+	"path"
 
 	"github.com/ihleven/errors"
 )
@@ -102,4 +104,24 @@ func (c *HiDriveClient) GetDir(path string, params url.Values) (*DirResponse, er
 	}
 	// bytes, _ := json.MarshalIndent(response, "", "    ")
 	return &response, nil
+}
+
+func (c *HiDriveClient) Mkdir(parentpath, dirname string) (*DirResponse, error) {
+	respBody, err := c.PostRequest("/dir", nil, url.Values{
+		"path": {path.Join(c.prefix, parentpath, dirname)},
+		// "on_exist": {"autoname"},
+	})
+	if err != nil {
+		fmt.Println("error in post request")
+		return nil, errors.Wrap(err, "Error in post request")
+	}
+	defer respBody.Close()
+
+	var dir DirResponse
+	err = json.NewDecoder(respBody).Decode(&dir)
+	if err != nil {
+		fmt.Println("error in decoding post request")
+		return nil, errors.Wrap(err, "Error decoding post result")
+	}
+	return &dir, nil
 }

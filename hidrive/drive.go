@@ -15,7 +15,7 @@ import (
 func NewDrive(oap *OAuth2Prov, pathfunc func(*http.Request) (string, string, string)) *Drive {
 
 	var Drive = Drive{
-		client:   NewClient(oap),
+		client:   NewClient(oap, ""),
 		pathfunc: pathfunc,
 	}
 	return &Drive

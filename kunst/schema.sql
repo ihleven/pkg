@@ -63,7 +63,9 @@ CREATE TABLE bild (
     anmerkungen text    NOT NULL DEFAULT '',
     kommentar   text    NOT NULL DEFAULT '',
     ordnung     text    NOT NULL DEFAULT '',
-    phase       text    NOT NULL DEFAULT ''
+    phase       text    NOT NULL DEFAULT '',
+    modified    timestamp with time zone not null default now()
+
 );
 
 CREATE TABLE enthalten (
