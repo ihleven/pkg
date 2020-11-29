@@ -58,6 +58,7 @@ func (s *httpServer) ListenAndServe() {
 		Handler:        limit(s.dispatcher, s.limiter),
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
+		IdleTimeout:    15 * time.Second, // TODO: was ist das?
 		MaxHeaderBytes: 1 << 20,
 	}
 

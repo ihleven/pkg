@@ -43,7 +43,7 @@ func (d *shiftPathDispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		// values.Add("_reqNumber", strconv.FormatInt(reqNumber, 10))
 		// r.URL.RawQuery = values.Encode()
 	}
-
+	// fmt.Println("dispatch => ", r.URL.Path)
 	head, tail = shiftPath(r.URL.Path)
 	// if d.debug {
 	// 	color.Green(" * dispatching: %s -> %s\n", head, tail)

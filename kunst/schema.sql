@@ -1,13 +1,48 @@
-
 DROP TABLE foto;
+DROP TABLE enthalten;
 DROP TABLE bild;
 DROP TABLE serie;
+DROP TABLE ausstellung;
+DROP TABLE katalog;
+
+
+CREATE TABLE katalog (
+    id         serial  PRIMARY KEY,
+    -- code       text    NOT NULL DEFAULT '', -- UNIQUE,      -- secondary key
+    jahr       integer NOT NULL DEFAULT 0,
+    titel      text    NOT NULL DEFAULT '',
+    untertitel text    NOT NULL DEFAULT '',
+    kommentar  text    NOT NULL DEFAULT ''
+);
+
+
+CREATE TABLE ausstellung (
+    id         serial  PRIMARY KEY,
+    -- code       text    NOT NULL DEFAULT '', -- UNIQUE,      -- secondary key
+    titel      text    NOT NULL DEFAULT '',
+    untertitel text    NOT NULL DEFAULT '',
+    typ        text    NOT NULL DEFAULT '',
+    jahr       integer NOT NULL DEFAULT 0,
+    von        date    NULL,
+    bis        date    NULL,
+    ort        text    NOT NULL DEFAULT '',
+    venue      text    NOT NULL DEFAULT 0,
+    kommentar  text    NOT NULL DEFAULT ''
+);
+
 
 CREATE TABLE serie (
-    id          integer PRIMARY KEY,
+    id          serial  PRIMARY KEY,
+    code        text    NOT NULL UNIQUE,      -- secondary key
     jahr        integer NOT NULL DEFAULT 0,
-    titel       text    NOT NULL DEFAULT '',
-    num_bilder integer NOT NULL DEFAULT 0
+    titel       text    NOT NULL UNIQUE DEFAULT '',
+    anzahl      integer NOT NULL DEFAULT 0,
+    technik     text    NOT NULL DEFAULT '',
+    traeger     text    NOT NULL DEFAULT '',
+    hoehe       integer NOT NULL DEFAULT 0,
+    breite      integer NOT NULL DEFAULT 0,
+    tiefe       integer NOT NULL DEFAULT 0,
+    kommentar   text    NOT NULL DEFAULT ''
 );
 
 
@@ -15,7 +50,7 @@ CREATE TABLE bild (
     id          serial  PRIMARY KEY,
     jahr        integer NOT NULL DEFAULT 0,
     titel       text    NOT NULL DEFAULT '',
-    serie       text    NOT NULL DEFAULT '',
+    serie       text    REFERENCES serie(code) ON UPDATE CASCADE ON DELETE RESTRICT,
     serie_nr    integer NOT NULL DEFAULT 0,
     technik     text    NOT NULL DEFAULT '',
     traeger     text    NOT NULL DEFAULT '',
@@ -23,15 +58,20 @@ CREATE TABLE bild (
     breite      integer NOT NULL DEFAULT 0,
     tiefe       integer NOT NULL DEFAULT 0,
     flaeche     double precision NOT NULL DEFAULT 0.0,
-    foto_id     integer DEFAULT 0,
-    -- hauptfoto   integer DEFAULT 0,
-   
-    anmerkungen text NOT NULL DEFAULT '',
-    kommentar   text NOT NULL DEFAULT '',
-    ordnung     text NOT NULL DEFAULT '',
-    phase       text NOT NULL DEFAULT ''
+    teile       integer NOT NULL DEFAULT 0,
+    foto_id     integer NOT NULL DEFAULT 0,   
+    anmerkungen text    NOT NULL DEFAULT '',
+    kommentar   text    NOT NULL DEFAULT '',
+    ordnung     text    NOT NULL DEFAULT '',
+    phase       text    NOT NULL DEFAULT ''
 );
 
+CREATE TABLE enthalten (
+    id             serial  PRIMARY KEY,
+    bild_id        integer REFERENCES bild(id)        ON UPDATE CASCADE ON DELETE CASCADE,
+    katalog_id     integer REFERENCES katalog(id)     ON UPDATE CASCADE ON DELETE CASCADE,
+    ausstellung_id integer REFERENCES ausstellung(id) ON UPDATE CASCADE ON DELETE CASCADE
+);
 
 
 
@@ -52,8 +92,16 @@ CREATE TABLE foto (
     taken     timestamptz NOT NULL,
     caption   text        NOT NULL DEFAULT '',
     kommentar text        NOT NULL DEFAULT ''
+    -- kat_id    integer     REFERENCES katalog(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    -- aust_id   integer     REFERENCES ausstellung(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    serie_id  integer     REFERENCES serie(id) ON UPDATE CASCADE ON DELETE RESTRICT,
 );
 
+CREATE TABLE dokument (
+    id        serial     PRIMARY KEY,
+    format
+    
+);
 
 
 

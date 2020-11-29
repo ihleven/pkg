@@ -1,6 +1,46 @@
+// Package kunst is a virtual exhibition or collection of wolfgang ihle's work
 package kunst
 
-import "time"
+import (
+	"time"
+)
+
+type Ausstellung struct { // Exhibition
+
+	ID         int        `db:"id"           json:"id"`
+	Code       string     `db:"code"           json:"code"`
+	Ort        string     `db:"ort"          json:"ort"`
+	Jahr       int        `db:"jahr"         json:"jahr"`
+	Venue      string     `db:"venue"        json:"venue"`
+	Titel      string     `db:"titel"        json:"titel"`
+	Untertitel string     `db:"untertitel"   json:"untertitel"`
+	Typ        string     `db:"typ"          json:"typ"` // einzel, sammel, dauerleihgabe, ....
+	Von        *time.Time `db:"von"          json:"von"`
+	Bis        *time.Time `db:"bis"          json:"bis"`
+	Kommentar  string     `db:"kommentar"    json:"kommentar"`
+	// NumBilder int        `db:"num_bilder"          json:"num_bilder"  schema:"num_bilder"`
+	Bilder    []Bild     `db:"-"    json:"bilder"`
+	Fotos     []Foto     `db:"-"    json:"fotos"`
+	Dokumente []Dokument `db:"-"    json:"dokumente"`
+}
+
+type Katalog struct {
+	ID    int
+	Code  string
+	Name  string
+	Jahr  int
+	Datum time.Time
+}
+
+type Serie struct {
+	ID        int    `db:"id"        json:"id"`
+	Jahr      int    `db:"jahr"      json:"jahr,omitempty"    schema:"jahr"`
+	Titel     string `db:"titel"     json:"titel"             schema:"name"`
+	Anzahl    int    `db:"anzahl"    json:"anzahl,omitempty"  schema:"num_bilder"`
+	Kommentar string `db:"kommentar" json:"kommentar"         schema:"kommentar"`
+	Bilder    []Bild `db:"-"         json:"bilder"             schema:"-"`
+	Fotos     []Foto `db:"-"         json:"fotos"            schema:"-"`
+}
 
 type Bild struct {
 	ID             int     `db:"id"          json:"id"`    //
@@ -17,13 +57,16 @@ type Bild struct {
 	Anmerkungen    string  `db:"anmerkungen" json:"anmerkungen"`                // Anmerkungen des Künstlers
 	Kommentar      string  `db:"kommentar"   json:"kommentar"`                  // Kommentare zum Bild, nicht für die Öffentlichkeit gedacht
 	Überordnung    string  `db:"ordnung"     json:"ueberordnung"`               //
-	Schaffensphase string  `db:"phase"       json:"phase"`                      //
+	Schaffensphase string  `db:"phase"       json:"phase"`                      // Natur
 	Fotos          []Foto  `db:"-"           json:"fotos" `
 	IndexFotoID    int     `db:"foto_id"     json:"foto_id" schema:"foto_id"` //
 	// Systematik     string `db:"-"    json:"sytematik"`    //
 	// Ordnung        string `db:"-"    json:"ordnung"`      //
 	// Hauptfoto   *Foto
 	// Ditychon / Triptychon
+	// AusstellungID int
+	// KatalogID     int
+	Teile int `db:"teile"       json:"teile"`
 }
 
 type Foto struct {
@@ -42,17 +85,18 @@ type Foto struct {
 	Caption   string    `db:"caption"   json:"caption"`
 	Kommentar string    `db:"kommentar" json:"kommentar"`
 	Labels    []string  `db:"-"         json:"labels"`
+
+	// AusstellungID *int `db:"aust_id"         json:"aust_id"`
+	// KatalogID     int
 }
 
-type Katalog struct {
-	ID    int
-	Code  string
-	Name  string
-	Jahr  int
-	Datum time.Time
-}
+// Natur I Landschaft, Figur
+// Natur II Abstraktion
+// Entgegenständlichung
+// Monochrome Malerei
 
-type Serie struct {
-	Code string
-	Name string
+type Dokument struct {
+	ID   int
+	Pfad string // austellungen/9/RedeHelmut.pdf
+
 }

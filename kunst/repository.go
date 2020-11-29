@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/georgysavva/scany/dbscan"
 	"github.com/georgysavva/scany/pgxscan"
 	"github.com/ihleven/errors"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -41,6 +42,115 @@ func (r *Repo) Select(dst interface{}, query string, args ...interface{}) error 
 		return errors.Wrap(err, "Error")
 	}
 	return nil
+}
+
+func (r *Repo) LoadAusstellungen() ([]Ausstellung, error) {
+
+	stmt := "SELECT * FROM ausstellung ORDER BY id ASC"
+
+	var ausstellungen []Ausstellung
+	err := r.Select(&ausstellungen, stmt)
+	fmt.Println(ausstellungen, err)
+	if err != nil {
+		return nil, err
+	}
+
+	return ausstellungen, nil
+}
+
+func (r *Repo) InsertAusstellung(a *Ausstellung) (int, error) {
+
+	stmt := "INSERT INTO ausstellung (titel, untertitel, typ, jahr, von, bis, ort, venue, kommentar) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id"
+
+	row := r.dbpool.QueryRow(r.ctx, stmt, a.Titel, a.Untertitel, a.Typ, a.Jahr, a.Von, a.Bis, a.Ort, a.Venue, a.Kommentar)
+	var returnid int
+	err := row.Scan(&returnid)
+	return returnid, errors.Wrap(err, "Could not insert ausstellung %v", a)
+}
+
+func (r *Repo) SaveAusstellung(a *Ausstellung) error {
+	fmt.Println("ausstellung:", a)
+	stmt := `
+		UPDATE ausstellung SET titel=$1, untertitel=$2, typ=$3, jahr=$4, von=$5, bis=$6, ort=$7, venue=$8, kommentar=$9 WHERE id=$10
+	`
+	_, err := r.dbpool.Exec(r.ctx, stmt, a.Titel, a.Untertitel, a.Typ, a.Jahr, a.Von, a.Bis, a.Ort, a.Venue, a.Kommentar, a.ID)
+	return errors.Wrap(err, "Could not save ausstellung %v", a)
+}
+
+// LoadAusstellung ...
+func (r *Repo) LoadAusstellung(id int) (*Ausstellung, error) {
+
+	stmt := "SELECT * FROM ausstellung WHERE id=$1"
+	fmt.Println("LoadAusstellung")
+
+	ausstellung := Ausstellung{Bilder: make([]Bild, 0), Fotos: make([]Foto, 0)}
+	err := pgxscan.Get(r.ctx, r.dbpool, &ausstellung, stmt, id)
+
+	if dbscan.NotFound(err) {
+		fmt.Println(dbscan.NotFound(err))
+		return nil, errors.NewWithCode(404, "not row found")
+	} else if err != nil {
+		return nil, errors.Wrap(err, "db error")
+	}
+
+	fmt.Println("LoadAusstellung", id, ausstellung)
+	err = r.Select(&ausstellung.Bilder, "SELECT b.* FROM bild b, enthalten e WHERE b.id=e.bild_id AND ausstellung_id=$1", id)
+	if err != nil {
+		return nil, errors.Wrap(err, "db error bilder")
+	}
+
+	// err = r.Select(&ausstellung.Fotos, "SELECT * FROM foto WHERE aust_id=$1", id)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	return &ausstellung, nil
+}
+
+func (r *Repo) LoadSerien() ([]Serie, error) {
+
+	stmt := "SELECT * FROM serie ORDER BY id ASC"
+
+	var serien []Serie
+	err := r.Select(&serien, stmt)
+	fmt.Println(serien, err)
+	if err != nil {
+		return nil, err
+	}
+
+	return serien, nil
+}
+
+func (r *Repo) InsertSerie(s *Serie) (int, error) {
+
+	stmt := "INSERT INTO serie (jahr, titel, anzahl, kommentar) VALUES ($1,$2,$3,$4) RETURNING id"
+
+	row := r.dbpool.QueryRow(r.ctx, stmt, s.Jahr, s.Titel, s.Anzahl, s.Kommentar)
+	var returnid int
+	err := row.Scan(&returnid)
+	return returnid, errors.Wrap(err, "Could not insert serie %v", s)
+}
+
+// LoadSerie ...
+func (r *Repo) LoadSerie(id int) (*Serie, error) {
+
+	stmt := "SELECT * FROM serie WHERE id=$1"
+
+	serie := Serie{Bilder: make([]Bild, 0), Fotos: make([]Foto, 0)}
+	err := pgxscan.Get(r.ctx, r.dbpool, &serie, stmt, id)
+	if err != nil {
+		return nil, err
+	}
+
+	err = r.Select(&serie.Bilder, "SELECT * FROM bild WHERE serie=$1", serie.Titel)
+	if err != nil {
+		return nil, err
+	}
+
+	// err = r.Select(&serie.Fotos, "SELECT * FROM foto WHERE aust_id=$1", id)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	return &serie, nil
 }
 
 func (r *Repo) LoadBilder() ([]Bild, error) {
@@ -122,15 +232,15 @@ func (r *Repo) LoadFoto(id int) (*Foto, error) {
 	return &foto, nil
 }
 
-func (r *Repo) LoadFotos() ([]Foto, error) {
+// func (r *Repo) LoadFotos() ([]Foto, error) {
 
-	stmt := "SELECT * FROM foto ORDER BY id"
+// 	stmt := "SELECT * FROM foto ORDER BY id"
 
-	var fotos []Foto
-	err := pgxscan.Select(r.ctx, r.dbpool, &fotos, stmt)
-	if err != nil {
-		return nil, err
-	}
+// 	var fotos []Foto
+// 	err := pgxscan.Select(r.ctx, r.dbpool, &fotos, stmt)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	return fotos, nil
-}
+// 	return fotos, nil
+// }

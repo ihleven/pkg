@@ -5,9 +5,10 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path"
 
 	args "github.com/alexflint/go-arg"
+	"github.com/ihleven/pkg/auth"
+	"github.com/ihleven/pkg/hidrive"
 	"github.com/ihleven/pkg/httpsrvr"
 	"github.com/ihleven/pkg/kunst"
 )
@@ -28,6 +29,17 @@ var flags struct {
 }
 
 func main() {
+
+	oap := hidrive.NewOauthProvider()
+	// oap.RefreshToken()
+	// err := oap.TokenInfo()
+	// if err != nil {
+	// 	fmt.Printf("%+v\n", err)
+	// }
+
+	hdclient := hidrive.NewClient(oap)
+	hd := hidrive.NewDrive(oap, hidrive.PrefixPath("/users/matt.ihle/wolfgang-ihle"))
+	// wdrive := hidrive.NewDrive(oap, "wolfgang-ihle")
 
 	args.MustParse(&flags)
 
@@ -52,32 +64,36 @@ func main() {
 				fmt.Println("   * foto ->", foto)
 			}
 		}
-		fotos, err := db.LoadFotos()
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, foto := range fotos {
-			file, err := os.Open(path.Join(flags.Medien, foto.Path))
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Println(" * foto ->", foto.ID, foto.Name, file, flags.Medien+"/thumbs/100/")
-			err = kunst.GenerateThumbnail100(file, foto.ID, foto.Width, foto.Height, flags.Medien+"/thumbs/100/")
-			if err != nil {
-				fmt.Println("error thumbnailing", err)
-			}
-		}
+		// fotos, err := db.LoadFotos()
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
+		// for _, foto := range fotos {
+		// 	file, err := os.Open(path.Join(flags.Medien, foto.Path))
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// 	fmt.Println(" * foto ->", foto.ID, foto.Name, file, flags.Medien+"/thumbs/100/")
+		// 	err = kunst.GenerateThumbnail100(file, foto.ID, foto.Width, foto.Height, flags.Medien+"/thumbs/100/")
+		// 	if err != nil {
+		// 		fmt.Println("error thumbnailing", err)
+		// 	}
+		// }
 
 	}
 
 	srv := httpsrvr.NewServer("", flags.Port, false, false, nil)
-	// handler := kunst.NewHandler()
-	srv.Register("/api", kunst.KunstHandler(flags.Database, flags.Medien))
-	// srv.Register("/api/upload", kunst.UploadFile(handler))
-	// srv.Register("/bilder", kunst.Bilder(handler)) // template
-	// srv.Register("/api/bild", kunst.BildDetail(handler))
-	srv.Register("/api/media", http.StripPrefix("/", http.FileServer(http.Dir(flags.Medien))))
 
+	srv.Register("/api", kunst.KunstHandler(flags.Database, flags.Medien, hdclient))
+	srv.Register("/api/media", http.StripPrefix("/", http.FileServer(http.Dir(flags.Medien))))
+	srv.Register("/api/hidrive", hd)
+	srv.Register("/api/signin", auth.SigninHandler)
+
+	// srv.Register("/auth", oap)
+	srv.Register("/cloud11/hidrive", hd)
+	srv.Register("/cloud11/signin", auth.SigninHandler)
+	// srv.Register("/welcome", auth.Welcome)
+	// srv.Register("/refresh", auth.Refresh)
 	srv.ListenAndServe()
 
 }
