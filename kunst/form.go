@@ -62,3 +62,32 @@ func parseFormSubmitSerie(r *http.Request) (*Serie, error) {
 	// }
 	return &serie.Serie, nil
 }
+
+func parseFormSubmitBild(r *http.Request, id int) (*Bild, error) {
+	err := r.ParseMultipartForm(0)
+	if err != nil {
+		return nil, err
+	}
+
+	var bild struct {
+		Bild
+		// Von, Bis string
+	}
+	decoder := schema.NewDecoder()
+	// decoder.IgnoreUnknownKeys(true)
+	err = decoder.Decode(&bild, r.PostForm)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error decoding form")
+	}
+	// if t, err := time.Parse("2006-01-02", ausstellung.Von); err == nil {
+	// 	ausstellung.Ausstellung.Von = &t
+	// }
+	// if t, err := time.Parse("2006-01-02", ausstellung.Bis); err == nil {
+	// 	ausstellung.Ausstellung.Bis = &t
+	// }
+	if id != 0 && bild.ID != 0 && id != bild.ID {
+		return nil, errors.NewWithCode(400, "id in url (%s) and bild (%d) differ", id, bild.ID)
+	}
+
+	return &bild.Bild, nil
+}

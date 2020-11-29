@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"net/http"
 	"os"
 
 	args "github.com/alexflint/go-arg"
@@ -48,44 +46,10 @@ func main() {
 		os.Exit(0)
 	}
 
-	if flags.Debug {
-		fmt.Println("debug", flags)
-		db, err := kunst.NewRepo(flags.Database)
-		if err != nil {
-			log.Fatal(err)
-		}
-		bilder, err := db.LoadBilder()
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, bild := range bilder {
-			fmt.Println(" * bild ->", bild.ID, bild.Titel)
-			for _, foto := range bild.Fotos {
-				fmt.Println("   * foto ->", foto)
-			}
-		}
-		// fotos, err := db.LoadFotos()
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-		// for _, foto := range fotos {
-		// 	file, err := os.Open(path.Join(flags.Medien, foto.Path))
-		// 	if err != nil {
-		// 		log.Fatal(err)
-		// 	}
-		// 	fmt.Println(" * foto ->", foto.ID, foto.Name, file, flags.Medien+"/thumbs/100/")
-		// 	err = kunst.GenerateThumbnail100(file, foto.ID, foto.Width, foto.Height, flags.Medien+"/thumbs/100/")
-		// 	if err != nil {
-		// 		fmt.Println("error thumbnailing", err)
-		// 	}
-		// }
-
-	}
-
 	srv := httpsrvr.NewServer("", flags.Port, false, false, nil)
 
 	srv.Register("/api", kunst.KunstHandler(flags.Database, flags.Medien, hdclient))
-	srv.Register("/api/media", http.StripPrefix("/", http.FileServer(http.Dir(flags.Medien))))
+	// srv.Register("/api/media", http.StripPrefix("/", http.FileServer(http.Dir(flags.Medien))))
 	srv.Register("/api/hidrive", hd)
 	srv.Register("/api/signin", auth.SigninHandler)
 

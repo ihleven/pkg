@@ -67,7 +67,8 @@ type Bild struct {
 	// Ditychon / Triptychon
 	// AusstellungID int
 	// KatalogID     int
-	Teile int `db:"teile"       json:"teile"`
+	Teile    int        `db:"teile"       json:"teile"`
+	Modified *time.Time `db:"modified"    json:"modified"`
 }
 
 type Foto struct {

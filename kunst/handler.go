@@ -18,7 +18,6 @@ import (
 	_ "image/png"
 
 	"github.com/disintegration/imaging"
-	"github.com/gorilla/schema"
 	"github.com/ihleven/errors"
 	"github.com/ihleven/pkg/hidrive"
 
@@ -121,6 +120,7 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 		bytes, err := json.MarshalIndent(ausstellung, "", "    ")
 		if err != nil {
 			w.Write([]byte(errors.Wrap(err, "error:").Error()))
+			return
 		}
 		w.Write(bytes)
 	})
@@ -244,37 +244,100 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 		bytes, _ := json.MarshalIndent(bilder, "", "    ")
 		w.Write(bytes)
 	})
+	// r.Post("/bilder", func(w http.ResponseWriter, r *http.Request) {
+	// 	bild, err := BilderUpdate(repo, "", r)
+	// 	if err != nil {
+	// 		w.Write([]byte(errors.Wrap(err, "error:").Error()))
+	// 	}
+	// 	bytes, err := json.MarshalIndent(bild, "", "    ")
+	// 	if err != nil {
+	// 		w.Write([]byte(errors.Wrap(err, "error:").Error()))
+	// 	}
+	// 	w.Write(bytes)
+	// })
+
+	// Neues Bild anlegen
 	r.Post("/bilder", func(w http.ResponseWriter, r *http.Request) {
-		bild, err := BilderUpdate(repo, "", r)
+		bild, err := parseFormSubmitBild(r, 0)
+
+		id, err := repo.InsertBild(bild)
 		if err != nil {
-			w.Write([]byte(errors.Wrap(err, "error:").Error()))
+			http.Error(w, errors.Wrap(err, "Couldn‘t insert bild: %v", bild).Error(), errors.Code(err))
+			return
+		}
+		dir, err := hdclient.Mkdir("bilder", strconv.Itoa(id))
+		fmt.Println("dir created:", dir, errors.Code(err))
+		if err != nil && errors.Code(err) != 409 { // 409 wenn dir ex.
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		bild, err = repo.LoadBild(id)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
 		}
 		bytes, err := json.MarshalIndent(bild, "", "    ")
 		if err != nil {
-			w.Write([]byte(errors.Wrap(err, "error:").Error()))
+			http.Error(w, err.Error(), 500)
+			return
 		}
 		w.Write(bytes)
 	})
+
 	r.Get("/bilder/{ID}", func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "ID")
-		bilder, err := BilderDetail(repo, id, r)
-		fmt.Println("bild =>", id, bilder, err)
-		bytes, err := json.MarshalIndent(bilder, "", "    ")
+
+		id, err := strconv.Atoi(chi.URLParam(r, "ID"))
 		if err != nil {
-			w.Write([]byte(errors.Wrap(err, "error:").Error()))
+			http.Error(w, err.Error(), 400)
+			return
 		}
-		w.Write(bytes)
-	})
-	r.Post("/bilder/{ID}", func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "ID")
-		bild, err := BilderUpdate(repo, id, r)
-		fmt.Println("BilderUpdate:", id, bild, err)
+		bild, err := repo.LoadBild(id)
+		if err != nil {
+			http.Error(w, errors.Wrap(err, "Error loading bild %v", id).Error(), 400)
+			return
+
+		}
+
 		bytes, err := json.MarshalIndent(bild, "", "    ")
 		if err != nil {
 			w.Write([]byte(errors.Wrap(err, "error:").Error()))
+			return
 		}
 		w.Write(bytes)
 	})
+	// r.Post("/bilder/{ID}", func(w http.ResponseWriter, r *http.Request) {
+	// 	id := chi.URLParam(r, "ID")
+	// 	bild, err := BilderUpdate(repo, id, r)
+	// 	fmt.Println("BilderUpdate:", id, bild, err)
+	// 	bytes, err := json.MarshalIndent(bild, "", "    ")
+	// 	if err != nil {
+	// 		w.Write([]byte(errors.Wrap(err, "error:").Error()))
+	// 	}
+	// 	w.Write(bytes)
+	// })
+
+	// Daten zu einem bestimmten Bild ändern
+	r.Put("/bilder/{ID}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(chi.URLParam(r, "ID"))
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid id in url: %d", chi.URLParam(r, "ID")), 400)
+		}
+
+		bild, err := parseFormSubmitBild(r, id)
+
+		err = repo.SaveBild(id, bild)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Couldn‘t save bild: %v", bild), 500)
+		}
+		bild, err = repo.LoadBild(id)
+		bytes, err := json.MarshalIndent(bild, "", "    ")
+		if err != nil {
+			w.Write([]byte(errors.Wrap(err, "error:").Error()))
+			return
+		}
+		w.Write(bytes)
+	})
+
 	r.Post("/bilder/{ID}/fotos", func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "ID")
 		foto, err := UploadFoto(repo, id, r)
@@ -285,6 +348,56 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 		}
 		w.Write(bytes)
 	})
+
+	// Dateien zu einer bestimmten Ausstellung ins hidrive hochladen
+	r.Post("/bilder/{ID}/hidrive", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(chi.URLParam(r, "ID"))
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid id in url: %d", chi.URLParam(r, "ID")), 400)
+			return
+		}
+
+		r.ParseMultipartForm(10 << 20)
+
+		modtime := r.Form.Get("modtime")
+		name := r.Form.Get("name")
+
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, errors.Wrap(err, "error:").Error(), 500)
+			return
+		}
+		defer file.Close()
+
+		fmt.Printf("header: %s, name: %s, modtime: %v\n", header.Filename, name, modtime)
+		meta, err := hdclient.UploadFile(fmt.Sprintf("bilder/%d", id), file, name, modtime)
+		if err != nil {
+			http.Error(w, errors.Wrap(err, "error:").Error(), 500)
+			return
+		}
+		fmt.Printf("meta: %#v\n", meta)
+
+		_, err = repo.InsertFoto(
+			id, 0, meta.Name, int(meta.Size), meta.Path,
+			"format", 1024, 768, time.Now(), "Caption", "kommentar",
+		)
+		if err != nil {
+			http.Error(w, errors.Wrap(err, "error:").Error(), 500)
+			return
+		}
+		// err = repo.SaveAusstellung(ausstellung)
+		// if err != nil {
+		// 	http.Error(w, fmt.Sprintf("Couldn‘t save ausstellung: %v", ausstellung), 500)
+		// }
+		// ausstellung, err = repo.LoadAusstellung(id)
+		bytes, err := json.MarshalIndent(meta, "", "    ")
+		if err != nil {
+			w.Write([]byte(errors.Wrap(err, "error:").Error()))
+			return
+		}
+		w.Write(bytes)
+	})
+
 	return r
 }
 
@@ -296,93 +409,6 @@ func SerienList(db *Repo) ([]Serie, error) {
 	}
 
 	return serien, nil
-}
-
-var decoder = schema.NewDecoder()
-
-func BilderDetail(db *Repo, idstr string, r *http.Request) (*Bild, error) {
-
-	// addCorsHeader(w)
-	// if r.Method == "OPTIONS" {
-	// 	w.WriteHeader(http.StatusOK)
-	// 	return
-	// }
-
-	// w.Header().Set("Access-Control-Allow-Origin", "*")
-	fmt.Println("id", idstr)
-	id, err := strconv.Atoi(idstr)
-	if err != nil {
-		// if idstr == "neu" {
-		id = 0
-		fmt.Println("id", id)
-		// } else {
-		// 	return nil, errors.NewWithCode(400, "Invalid id")
-		// }
-	}
-
-	if r.Method == http.MethodPost {
-		err := r.ParseMultipartForm(0)
-		if err != nil {
-			return nil, err
-		}
-		var bild Bild
-		err = decoder.Decode(&bild, r.PostForm)
-		if err != nil {
-			return nil, errors.Wrap(err, "Error decoding form")
-		}
-		if id == 0 {
-			id, err = db.InsertBild(&bild)
-		} else {
-			err = db.SaveBild(id, &bild)
-		}
-		if err != nil {
-			return nil, errors.Wrap(err, "Error db ")
-		}
-	}
-	fmt.Println("iasdf")
-
-	bild, err := db.LoadBild(id)
-	if err != nil {
-		return nil, errors.Wrap(err, "Error loading bild %v", id)
-	}
-
-	return bild, nil
-
-}
-
-func BilderUpdate(db *Repo, idstr string, r *http.Request) (*Bild, error) {
-
-	err := r.ParseMultipartForm(0)
-	if err != nil {
-		return nil, err
-	}
-
-	var bild Bild
-	err = decoder.Decode(&bild, r.PostForm)
-	if err != nil {
-		return nil, errors.Wrap(err, "Error decoding form")
-	}
-
-	id, err := strconv.Atoi(idstr)
-	if err == nil {
-		err = db.SaveBild(id, &bild)
-		if err != nil {
-			return nil, errors.Wrap(err, "Error saving bild %v", id)
-		}
-	} else {
-		id, err = db.InsertBild(&bild)
-		if err != nil {
-			return nil, errors.Wrap(err, "Error inserting bild %v", id)
-		}
-	}
-
-	b, err := db.LoadBild(id)
-	if err != nil {
-		return nil, errors.Wrap(err, "Error loading bild %v", id)
-	}
-
-	return b, nil
-
 }
 
 func UploadFileBinary(w http.ResponseWriter, r *http.Request) {
