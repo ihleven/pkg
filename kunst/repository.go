@@ -200,9 +200,9 @@ func (r *Repo) LoadBild(id int) (*Bild, error) {
 
 func (r *Repo) InsertBild(bild *Bild) (int, error) {
 
-	stmt := "INSERT INTO bild (titel, jahr, technik, traeger, hoehe, breite, tiefe, flaeche, foto_id, anmerkungen, kommentar, ordnung, phase) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id"
+	stmt := "INSERT INTO bild (titel, jahr, technik, traeger, hoehe, breite, tiefe, flaeche, foto_id, anmerkungen, kommentar, ordnung, phase) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id"
 
-	row := r.dbpool.QueryRow(r.ctx, stmt, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Überordnung, bild.Schaffensphase)
+	row := r.dbpool.QueryRow(r.ctx, stmt, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Überordnung, bild.Schaffensphase, bild.Teile)
 	var returnid int
 	err := row.Scan(&returnid)
 	return returnid, errors.Wrap(err, "Could not insert bild %v", bild)
@@ -210,9 +210,9 @@ func (r *Repo) InsertBild(bild *Bild) (int, error) {
 
 func (r *Repo) SaveBild(id int, bild *Bild) error {
 
-	stmt := "UPDATE bild set  titel=$2, jahr=$3, technik=$4, traeger=$5, hoehe=$6, breite=$7, tiefe=$8, flaeche=$9, foto_id=$10, anmerkungen=$11, kommentar=$12, ordnung=$13, phase=$14 where id=$1"
-
-	i, err := r.dbpool.Exec(r.ctx, stmt, id, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Überordnung, bild.Schaffensphase)
+	stmt := "UPDATE bild set  titel=$2, jahr=$3, technik=$4, traeger=$5, hoehe=$6, breite=$7, tiefe=$8, flaeche=$9, foto_id=$10, anmerkungen=$11, kommentar=$12, ordnung=$13, phase=$14, teile=$15 where id=$1"
+	fmt.Println("saeBild:", bild.Schaffensphase)
+	i, err := r.dbpool.Exec(r.ctx, stmt, id, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Überordnung, bild.Schaffensphase, bild.Teile)
 	if err != nil {
 		return err
 	}
@@ -246,15 +246,13 @@ func (r *Repo) LoadFoto(id int) (*Foto, error) {
 	return &foto, nil
 }
 
-// func (r *Repo) LoadFotos() ([]Foto, error) {
+func (r *Repo) LoadFotos() ([]Foto, error) {
 
-// 	stmt := "SELECT * FROM foto ORDER BY id"
+	var fotos []Foto
+	err := r.Select(&fotos, "SELECT * FROM foto")
+	if err != nil {
+		return nil, err
+	}
 
-// 	var fotos []Foto
-// 	err := pgxscan.Select(r.ctx, r.dbpool, &fotos, stmt)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return fotos, nil
-// }
+	return fotos, nil
+}

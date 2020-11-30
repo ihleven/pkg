@@ -57,7 +57,7 @@ type Bild struct {
 	Anmerkungen    string  `db:"anmerkungen" json:"anmerkungen"`                // Anmerkungen des Künstlers
 	Kommentar      string  `db:"kommentar"   json:"kommentar"`                  // Kommentare zum Bild, nicht für die Öffentlichkeit gedacht
 	Überordnung    string  `db:"ordnung"     json:"ueberordnung"`               //
-	Schaffensphase string  `db:"phase"       json:"phase"`                      // Natur
+	Schaffensphase string  `db:"phase"       json:"phase" schema:"phase"`       // Natur
 	Fotos          []Foto  `db:"-"           json:"fotos" `
 	IndexFotoID    int     `db:"foto_id"     json:"foto_id" schema:"foto_id"` //
 	IndexFoto      *Foto   `db:"foto"     json:"foto" schema:"-"`             //

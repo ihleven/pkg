@@ -321,9 +321,14 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 		id, err := strconv.Atoi(chi.URLParam(r, "ID"))
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Invalid id in url: %d", chi.URLParam(r, "ID")), 400)
+			return
 		}
 
 		bild, err := parseFormSubmitBild(r, id)
+		if err != nil {
+			http.Error(w, errors.Wrap(err, "Couldn‘t parse form").Error(), 400)
+			return
+		}
 
 		err = repo.SaveBild(id, bild)
 		if err != nil {
@@ -378,7 +383,7 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 		fmt.Printf("meta: %#v\n", meta)
 
 		_, err = repo.InsertFoto(
-			id, 0, meta.Name, int(meta.Size), meta.Path,
+			id, 0, meta.Name, int(meta.Size), meta.Name,
 			"format", 1024, 768, time.Now(), "Caption", "kommentar",
 		)
 		if err != nil {
