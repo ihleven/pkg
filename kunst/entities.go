@@ -5,6 +5,24 @@ import (
 	"time"
 )
 
+type Schaffensphase string
+
+const (
+	Früh                 Schaffensphase = "Frühwerk"
+	Natur1                              = "Natur I Landschaft, Figur"
+	Natur2                              = "Natur II Abstraktion"
+	Entgegenständlichung                = "Entgegenständlichung"
+	Monochrom                           = "Monochrome Malerei"
+)
+
+func (p Schaffensphase) IsValid() bool {
+	switch p {
+	case Früh, Natur1, Natur2, Entgegenständlichung, Monochrom:
+		return true
+	}
+	return false
+}
+
 type Ausstellung struct { // Exhibition
 
 	ID         int        `db:"id"           json:"id"`

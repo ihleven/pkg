@@ -153,10 +153,20 @@ func (r *Repo) LoadSerie(id int) (*Serie, error) {
 	return &serie, nil
 }
 
-func (r *Repo) LoadBilder() ([]Bild, error) {
+func (r *Repo) LoadBilder(phase, orderBy string) ([]Bild, error) {
 
+	stmt := "SELECT * FROM bild"
+	if phase != "" {
+		stmt += " WHERE phase='" + phase + "'"
+	}
+	if orderBy != "" {
+		stmt += " ORDER BY '" + orderBy + "' DESC"
+	} else {
+		stmt += " ORDER BY id DESC"
+	}
+	fmt.Println("stmt: ", stmt)
 	var bilder []Bild
-	err := r.Select(&bilder, "SELECT * FROM bild ORDER BY id DESC")
+	err := r.Select(&bilder, stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -171,8 +181,10 @@ func (r *Repo) LoadBilder() ([]Bild, error) {
 		return nil, err
 	}
 	for i, foto := range fotos {
-		fmt.Println("LoadBilder:", i, foto, indexByID[foto.BildID])
-		bilder[indexByID[foto.BildID]].IndexFoto = &fotos[i]
+		if index, ok := indexByID[foto.BildID]; ok {
+			fmt.Println("LoadBilder:", i, foto, index)
+			bilder[index].IndexFoto = &fotos[i]
+		}
 	}
 	for i, _ := range bilder {
 		fmt.Println(i, bilder[i].IndexFoto)

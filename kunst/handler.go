@@ -234,8 +234,11 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 
 	// Bilder list
 	r.Get("/bilder", func(w http.ResponseWriter, r *http.Request) {
-
-		bilder, err := repo.LoadBilder()
+		var phase string
+		if p := r.URL.Query().Get("phase"); Schaffensphase(p).IsValid() {
+			phase = p
+		}
+		bilder, err := repo.LoadBilder(phase, "")
 		if err != nil {
 			http.Error(w, errors.Wrap(err, "error in bilder list").Error(), errors.Code(err))
 			return
