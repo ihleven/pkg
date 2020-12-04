@@ -32,7 +32,7 @@ type Meta struct {
 	// Nhash    string      `json:"nhash"`
 
 	// Image   *drive.Image `json:"image"`
-	Image Image `json:"image"`
+	Image *Image `json:"image"`
 	// rshare
 	// Rshare interface{} `json:"rshare"`
 	// zone: zone.available, zone.quota, zone.used

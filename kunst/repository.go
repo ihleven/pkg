@@ -123,9 +123,9 @@ func (r *Repo) LoadSerien() ([]Serie, error) {
 
 func (r *Repo) InsertSerie(s *Serie) (int, error) {
 
-	stmt := "INSERT INTO serie (jahr, titel, anzahl, kommentar) VALUES ($1,$2,$3,$4) RETURNING id"
+	stmt := "INSERT INTO serie (slug, titel, untertitel, jahr, jahrbis, technik, traeger, hoehe, breite, tiefe, anmerkungen, kommentar, phase) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id"
 
-	row := r.dbpool.QueryRow(r.ctx, stmt, s.Jahr, s.Titel, s.Anzahl, s.Kommentar)
+	row := r.dbpool.QueryRow(r.ctx, stmt, s.Titel, s.Titel, s.Untertitel, s.Jahr, s.JahrBis, s.Technik, s.Träger, s.Höhe, s.Breite, s.Tiefe, s.Anmerkungen, s.Kommentar, s.Schaffensphase)
 	var returnid int
 	err := row.Scan(&returnid)
 	return returnid, errors.Wrap(err, "Could not insert serie %v", s)

@@ -33,18 +33,21 @@ CREATE TABLE ausstellung (
 
 CREATE TABLE serie (
     id          serial  PRIMARY KEY,
-    code        text    NOT NULL UNIQUE,      -- secondary key
+    slug        text    NOT NULL UNIQUE,      -- secondary key
     jahr        integer NOT NULL DEFAULT 0,
+    jahrbis     integer NOT NULL DEFAULT 0,
     titel       text    NOT NULL UNIQUE DEFAULT '',
+    untertitel  text    NOT NULL UNIQUE DEFAULT '',
     anzahl      integer NOT NULL DEFAULT 0,
     technik     text    NOT NULL DEFAULT '',
     traeger     text    NOT NULL DEFAULT '',
     hoehe       integer NOT NULL DEFAULT 0,
     breite      integer NOT NULL DEFAULT 0,
     tiefe       integer NOT NULL DEFAULT 0,
+    phase       text    NOT NULL DEFAULT ''
+    anmerkungen text    NOT NULL DEFAULT ''
     kommentar   text    NOT NULL DEFAULT ''
 );
-
 
 CREATE TABLE bild (
     id          serial  PRIMARY KEY,
