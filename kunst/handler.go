@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -180,8 +181,8 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 	})
 
 	r.Get("/serien", func(w http.ResponseWriter, r *http.Request) {
-		serien, _ := SerienList(repo)
-		fmt.Println("serien", serien)
+		serien, err := SerienList(repo)
+		fmt.Println("serien", serien, err)
 		bytes, _ := json.MarshalIndent(serien, "", "    ")
 		w.Write(bytes)
 
@@ -231,6 +232,34 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 		}
 		w.Write(bytes)
 	})
+	r.Post("/serien/{ID}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(chi.URLParam(r, "ID"))
+		if err != nil {
+			http.Error(w, errors.Wrap(err, "error:").Error(), 500)
+			return
+		}
+
+		var fieldmap map[string]interface{}
+		err = json.NewDecoder(r.Body).Decode(&fieldmap)
+		if err != nil {
+			http.Error(w, errors.Wrap(err, "error:").Error(), 500)
+			return
+		}
+		defer r.Body.Close()
+		fmt.Println("geparste serie:", fieldmap)
+
+		serie, err := repo.UpdateSerie(id, fieldmap)
+		if err != nil {
+			http.Error(w, errors.Wrap(err, "error:").Error(), 500)
+		}
+
+		bytes, err := json.MarshalIndent(serie, "", "    ")
+		if err != nil {
+			http.Error(w, errors.Wrap(err, "error:").Error(), 500)
+		}
+		w.Write(bytes)
+
+	})
 
 	// Bilder list
 	r.Get("/bilder", func(w http.ResponseWriter, r *http.Request) {
@@ -262,12 +291,20 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 	// Neues Bild anlegen
 	r.Post("/bilder", func(w http.ResponseWriter, r *http.Request) {
 		bild, err := parseFormSubmitBild(r, 0)
-
-		id, err := repo.InsertBild(bild)
 		if err != nil {
 			http.Error(w, errors.Wrap(err, "Couldn‘t insert bild: %v", bild).Error(), errors.Code(err))
 			return
 		}
+		fmt.Println("parsed:", bild)
+
+		id, err := repo.InsertBild(bild)
+		if err != nil {
+			fmt.Println(err)
+			http.Error(w, errors.Wrap(err, "Couldn‘t insert bild: %v", bild).Error(), errors.Code(err))
+			return
+		}
+		fmt.Println("id:", id)
+
 		dir, err := hdclient.Mkdir("bilder", strconv.Itoa(id))
 		fmt.Println("dir created:", dir, errors.Code(err))
 		if err != nil && errors.Code(err) != 409 { // 409 wenn dir ex.
@@ -320,7 +357,7 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 	// })
 
 	// Daten zu einem bestimmten Bild ändern
-	r.Put("/bilder/{ID}", func(w http.ResponseWriter, r *http.Request) {
+	r.Post("/bilder/{ID}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.Atoi(chi.URLParam(r, "ID"))
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Invalid id in url: %d", chi.URLParam(r, "ID")), 400)
@@ -341,6 +378,42 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 		bytes, err := json.MarshalIndent(bild, "", "    ")
 		if err != nil {
 			w.Write([]byte(errors.Wrap(err, "error:").Error()))
+			return
+		}
+		w.Write(bytes)
+	})
+
+	// Daten zu einem bestimmten Bild ändern
+	r.Patch("/bilder/{ID}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(chi.URLParam(r, "ID"))
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid id in url: %d", chi.URLParam(r, "ID")), 400)
+			return
+		}
+
+		bild, err := repo.LoadBild(id)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+		err = r.ParseMultipartForm(0)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+		if foto := r.Form.Get("foto_id"); foto != "" {
+			fmt.Println("foto:", foto)
+			i, err := strconv.Atoi(foto)
+			if err == nil {
+				bild.IndexFotoID = i
+				err = repo.SaveBild(id, bild)
+				if err != nil {
+					http.Error(w, fmt.Sprintf("Couldn‘t save bild: %v", bild), 500)
+				}
+			}
+		}
+
+		bytes, err := json.MarshalIndent(bild, "", "    ")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
 			return
 		}
 		w.Write(bytes)
@@ -377,17 +450,21 @@ func KunstHandler(database, medien string, hdclient *hidrive.HiDriveClient) http
 		}
 		defer file.Close()
 
-		fmt.Printf("header: %s, name: %s, modtime: %v\n", header.Filename, name, modtime)
-		meta, err := hdclient.UploadFile(fmt.Sprintf("bilder/%d", id), file, name, modtime)
+		dir := fmt.Sprintf("bilder/%d", id)
+		meta, err := hdclient.UploadFileNeu(dir, file, name, modtime)
 		if err != nil {
 			http.Error(w, errors.Wrap(err, "error:").Error(), 500)
 			return
 		}
-		fmt.Printf("meta: %#v\n", meta)
+		fmt.Printf("meta: %#v %v\n", meta, header.Filename)
 
+		var dtorig time.Time
+		if t, err := time.Parse("2006:01:02 15:04:05", meta.Image.Exif.DateTimeOriginal); err == nil {
+			dtorig = t
+		}
 		_, err = repo.InsertFoto(
-			id, 0, meta.Name, int(meta.Size), meta.Name,
-			"format", 1024, 768, time.Now(), "Caption", "kommentar",
+			id, 0, meta.Name, int(meta.Size), path.Join(dir, name),
+			meta.MIMEType, meta.Image.Width, meta.Image.Height, dtorig, meta.ID, fmt.Sprintf("%#v", meta.Image.Exif),
 		)
 		if err != nil {
 			http.Error(w, errors.Wrap(err, "error:").Error(), 500)

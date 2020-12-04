@@ -79,7 +79,7 @@ func (c *HiDriveClient) UploadFileNeu(folder string, body io.Reader, name string
 		"on_exist": {"autoname"},
 		"mtime":    {modtime},
 	})
-	if err == nil {
+	if err != nil {
 		return nil, errors.Wrap(err, "Error in post request")
 	}
 	defer respBody.Close()
@@ -87,8 +87,10 @@ func (c *HiDriveClient) UploadFileNeu(folder string, body io.Reader, name string
 	var meta Meta
 	err = json.NewDecoder(respBody).Decode(&meta)
 	if err != nil {
+		fmt.Println("upload err:", err)
 		return nil, errors.Wrap(err, "Error decoding post result")
 	}
+	fmt.Println("upload meta:", meta)
 	return &meta, nil
 }
 
@@ -99,7 +101,7 @@ func (c *HiDriveClient) PostRequest(endpoint string, body io.Reader, params url.
 	}
 
 	url := c.baseURL + endpoint + "?" + params.Encode()
-
+	fmt.Println("upload url:", url)
 	request, err := http.NewRequest("POST", url, body)
 	if err != nil {
 		return nil, &HiDriveError{ECode: 500, EMessage: "Failed to create new http request"}

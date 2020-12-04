@@ -3,6 +3,7 @@ package kunst
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/georgysavva/scany/dbscan"
@@ -130,6 +131,34 @@ func (r *Repo) InsertSerie(s *Serie) (int, error) {
 	return returnid, errors.Wrap(err, "Could not insert serie %v", s)
 }
 
+func (r *Repo) UpdateSerie(id int, fieldmap map[string]interface{}) (*Serie, error) {
+
+	i := 2
+	var fields []string
+	values := []interface{}{id}
+	for field, value := range fieldmap {
+		if field == "id" {
+			continue
+		}
+		values = append(values, fmt.Sprintf("%v", value))
+		field := fmt.Sprintf("%s=$%d", field, i)
+		fields = append(fields, field)
+		i++
+	}
+
+	stmt := fmt.Sprintf("UPDATE serie SET %s WHERE id=$1", strings.Join(fields, ","))
+
+	_, err := r.dbpool.Exec(r.ctx, stmt, values...)
+	if err != nil {
+		return nil, errors.Wrap(err, "Could not update serie %d => %v", id, fieldmap)
+	}
+	serie, loaderr := r.LoadSerie(id)
+	if err != nil {
+		return serie, loaderr
+	}
+	return serie, nil
+}
+
 // LoadSerie ...
 func (r *Repo) LoadSerie(id int) (*Serie, error) {
 
@@ -212,7 +241,7 @@ func (r *Repo) LoadBild(id int) (*Bild, error) {
 
 func (r *Repo) InsertBild(bild *Bild) (int, error) {
 
-	stmt := "INSERT INTO bild (titel, jahr, technik, traeger, hoehe, breite, tiefe, flaeche, foto_id, anmerkungen, kommentar, ordnung, phase) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id"
+	stmt := "INSERT INTO bild (titel, jahr, technik, traeger, hoehe, breite, tiefe, flaeche, foto_id, anmerkungen, kommentar, ordnung, phase, teile) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id"
 
 	row := r.dbpool.QueryRow(r.ctx, stmt, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Überordnung, bild.Schaffensphase, bild.Teile)
 	var returnid int

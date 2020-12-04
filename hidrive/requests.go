@@ -32,13 +32,35 @@ type Meta struct {
 	// Nhash    string      `json:"nhash"`
 
 	// Image   *drive.Image `json:"image"`
-	Image interface{} `json:"image"`
+	Image Image `json:"image"`
 	// rshare
 	// Rshare interface{} `json:"rshare"`
 	// zone: zone.available, zone.quota, zone.used
 	// Zone interface{} `json:"zone"`
 }
-
+type Image struct {
+	Height int  `json:"height"`
+	Width  int  `json:"width"`
+	Exif   Exif `json:"exif"`
+}
+type Exif struct {
+	Aperture         string
+	BitsPerSample    string
+	DateTimeOriginal string
+	ExifImageHeight  string
+	ExifImageWidth   string
+	ExposureTime     string
+	FocalLength      string
+	ISO              string
+	ImageHeight      string
+	ImageWidth       string
+	Make             string
+	Model            string
+	Orientation      string
+	ResolutionUnit   string
+	XResolution      string
+	YResolution      string
+}
 type DirResponse struct {
 	Meta
 	Members []Meta `json:"members"`

@@ -52,9 +52,15 @@ type Katalog struct {
 
 type Serie struct {
 	ID        int    `db:"id"        json:"id"`
+	Code      string `db:"code"      json:"code,omitempty"    schema:"code"`
 	Jahr      int    `db:"jahr"      json:"jahr,omitempty"    schema:"jahr"`
 	Titel     string `db:"titel"     json:"titel"             schema:"name"`
 	Anzahl    int    `db:"anzahl"    json:"anzahl,omitempty"  schema:"num_bilder"`
+	Technik   string `db:"technik"     json:"technik"`                    // Oel, Aquarell, Pastell, Radierung, Buntstifte, Tinte, Siebdruck
+	Träger    string `db:"traeger"     json:"traeger" schema:"traeger"`   // Leinwand, Papier, Holz,
+	Höhe      int    `db:"hoehe"       json:"hoehe"       schema:"hoehe"` //
+	Breite    int    `db:"breite"      json:"breite"`                     //
+	Tiefe     int    `db:"tiefe"       json:"tiefe"`                      //
 	Kommentar string `db:"kommentar" json:"kommentar"         schema:"kommentar"`
 	Bilder    []Bild `db:"-"         json:"bilder"             schema:"-"`
 	Fotos     []Foto `db:"-"         json:"fotos"            schema:"-"`

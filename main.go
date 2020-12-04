@@ -50,6 +50,7 @@ func main() {
 
 	srv.Register("/api", kunst.KunstHandler(flags.Database, flags.Medien, hdclient))
 	// srv.Register("/api/media", http.StripPrefix("/", http.FileServer(http.Dir(flags.Medien))))
+	srv.Register("/media", hd)
 	srv.Register("/api/hidrive", hd)
 	srv.Register("/api/signin", auth.SigninHandler)
 
