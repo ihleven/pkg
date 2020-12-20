@@ -18,7 +18,11 @@ require (
 	github.com/jackc/pgx/v4 v4.9.0
 	github.com/labstack/echo v3.3.10+incompatible // indirect
 	github.com/labstack/gommon v0.3.0 // indirect
+	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/spf13/cobra v1.1.1
+	github.com/spf13/viper v1.7.0
 	github.com/valyala/fasttemplate v1.2.1 // indirect
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 )

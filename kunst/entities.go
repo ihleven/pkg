@@ -2,6 +2,8 @@
 package kunst
 
 import (
+	"encoding/json"
+	"net/http"
 	"time"
 )
 
@@ -37,9 +39,9 @@ type Ausstellung struct { // Exhibition
 	Bis        *time.Time `db:"bis"          json:"bis"`
 	Kommentar  string     `db:"kommentar"    json:"kommentar"`
 	// NumBilder int        `db:"num_bilder"          json:"num_bilder"  schema:"num_bilder"`
-	Bilder    []Bild     `db:"-"    json:"bilder"`
-	Fotos     []Foto     `db:"-"    json:"fotos"`
-	Dokumente []Dokument `db:"-"    json:"dokumente"`
+	Bilder    []Bild      `db:"-"    json:"bilder"`
+	Fotos     []Foto      `db:"-"    json:"fotos"`
+	Dokumente interface{} `db:"-"    json:"dokumente"`
 }
 
 type Katalog struct {
@@ -56,6 +58,7 @@ type Serie struct {
 	Jahr           int    `db:"jahr"       json:"jahr,omitempty"  `
 	Titel          string `db:"titel"      json:"titel"           `
 	Untertitel     string `db:"untertitel" json:"untertitel"      `
+	Anzahl         int
 	JahrBis        int    `db:"jahrbis"    json:"anzahl,omitempty"`
 	Technik        string `db:"technik"    json:"technik"         ` // Oel, Aquarell, Pastell, Radierung, Buntstifte, Tinte, Siebdruck
 	Träger         string `db:"traeger"    json:"traeger"         ` // Leinwand, Papier, Holz,
@@ -73,7 +76,7 @@ type Bild struct {
 	ID             int     `db:"id"          json:"id"`    //
 	Jahr           int     `db:"jahr"        json:"jahr"`  //
 	Titel          string  `db:"titel"       json:"titel"` //
-	Serie          string  `db:"serie"       json:"serie"`
+	Serie          *string `db:"serie"       json:"serie"`
 	SerieNr        int     `db:"serie_nr"    json:"serie_nr"`
 	Technik        string  `db:"technik"     json:"technik"`                    // Oel, Aquarell, Pastell, Radierung, Buntstifte, Tinte, Siebdruck
 	Bildträger     string  `db:"traeger"     json:"traeger" schema:"traeger"`   // Leinwand, Papier, Holz,
@@ -91,7 +94,7 @@ type Bild struct {
 	// Systematik     string `db:"-"    json:"sytematik"`    //
 	// Ordnung        string `db:"-"    json:"ordnung"`      //
 	// Hauptfoto   *Foto
-	// Ditychon / Triptychon
+	// Diptychon / Triptychon
 	// AusstellungID int
 	// KatalogID     int
 	Teile    int        `db:"teile"       json:"teile"`
@@ -117,6 +120,8 @@ type Foto struct {
 
 	// AusstellungID *int `db:"aust_id"         json:"aust_id"`
 	// KatalogID     int
+
+	Serie *string
 }
 
 // Natur I Landschaft, Figur
@@ -128,4 +133,13 @@ type Dokument struct {
 	ID   int
 	Pfad string // austellungen/9/RedeHelmut.pdf
 
+}
+
+func render(data interface{}, w http.ResponseWriter) {
+	bytes, err := json.MarshalIndent(data, "", "    ")
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Write(bytes)
 }

@@ -51,7 +51,6 @@ func (r *Repo) LoadAusstellungen() ([]Ausstellung, error) {
 
 	var ausstellungen []Ausstellung
 	err := r.Select(&ausstellungen, stmt)
-	fmt.Println(ausstellungen, err)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +93,6 @@ func (r *Repo) LoadAusstellung(id int) (*Ausstellung, error) {
 		return nil, errors.Wrap(err, "db error")
 	}
 
-	fmt.Println("LoadAusstellung", id, ausstellung)
 	err = r.Select(&ausstellung.Bilder, "SELECT b.* FROM bild b, enthalten e WHERE b.id=e.bild_id AND ausstellung_id=$1", id)
 	if err != nil {
 		return nil, errors.Wrap(err, "db error bilder")
@@ -113,7 +111,6 @@ func (r *Repo) LoadSerien() ([]Serie, error) {
 
 	var serien []Serie
 	err := r.Select(&serien, stmt)
-	fmt.Println(serien, err)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +150,7 @@ func (r *Repo) UpdateSerie(id int, fieldmap map[string]interface{}) (*Serie, err
 		return nil, errors.Wrap(err, "Could not update serie %d => %v", id, fieldmap)
 	}
 	serie, loaderr := r.LoadSerie(id)
-	if err != nil {
+	if loaderr != nil {
 		return serie, loaderr
 	}
 	return serie, nil
@@ -193,7 +190,7 @@ func (r *Repo) LoadBilder(phase, orderBy string) ([]Bild, error) {
 	} else {
 		stmt += " ORDER BY id DESC"
 	}
-	fmt.Println("stmt: ", stmt)
+
 	var bilder []Bild
 	err := r.Select(&bilder, stmt)
 	if err != nil {
@@ -203,22 +200,22 @@ func (r *Repo) LoadBilder(phase, orderBy string) ([]Bild, error) {
 	for i, bild := range bilder {
 		indexByID[bild.ID] = i
 	}
-
+	fmt.Println("bilder:", bilder)
 	var fotos []Foto
 	err = r.Select(&fotos, "SELECT * FROM foto WHERE id IN (SELECT foto_id FROM bild)")
 	if err != nil {
 		return nil, err
 	}
+
 	for i, foto := range fotos {
 		if index, ok := indexByID[foto.BildID]; ok {
-			fmt.Println("LoadBilder:", i, foto, index)
 			bilder[index].IndexFoto = &fotos[i]
 		}
 	}
-	for i, _ := range bilder {
-		fmt.Println(i, bilder[i].IndexFoto)
-	}
-	fmt.Println(indexByID)
+	// for i, _ := range bilder {
+	// 	fmt.Println(i, bilder[i].IndexFoto)
+	// }
+	// fmt.Println(indexByID)
 	return bilder, nil
 }
 
@@ -270,6 +267,12 @@ func (r *Repo) InsertFoto(id, index int, name string, size int, path, format str
 	row := r.dbpool.QueryRow(r.ctx, stmt, id, index, name, size, time.Now(), path, format, width, height, taken, caption, kommentar)
 	var returnid int
 	err := row.Scan(&returnid)
+	bild, err := r.LoadBild(id)
+	if err == nil && bild.IndexFotoID == 0 {
+		bild.IndexFotoID = returnid
+		r.SaveBild(id, bild)
+	}
+
 	return returnid, errors.Wrap(err, "Could not insert foto %v", id)
 
 }
@@ -296,4 +299,36 @@ func (r *Repo) LoadFotos() ([]Foto, error) {
 	}
 
 	return fotos, nil
+}
+
+func (r *Repo) Update(table string, id int, fieldmap map[string]interface{}) error {
+
+	i := 2
+	var fields []string
+	values := []interface{}{id}
+	for field, value := range fieldmap {
+		if field == "id" {
+			continue
+		}
+		values = append(values, fmt.Sprintf("%v", value))
+		field := fmt.Sprintf("%s=$%d", field, i)
+		fields = append(fields, field)
+		i++
+	}
+
+	stmt := fmt.Sprintf("UPDATE %s SET %s WHERE id=$1", table, strings.Join(fields, ","))
+
+	_, err := r.dbpool.Exec(r.ctx, stmt, values...)
+	return errors.Wrap(err, "Could not update %s %d => %v", table, id, fieldmap)
+}
+
+func (r *Repo) Delete(table string, key string, id int) error {
+	if id == 0 {
+		return errors.New("id 0 not supported")
+	}
+
+	stmt := fmt.Sprintf("DELETE FROM %s WHERE %s=$1", table, key)
+
+	_, err := r.dbpool.Exec(r.ctx, stmt, id)
+	return errors.Wrap(err, "Could not delete %s %d", table, id)
 }
