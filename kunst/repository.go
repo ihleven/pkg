@@ -69,7 +69,6 @@ func (r *Repo) InsertAusstellung(a *Ausstellung) (int, error) {
 }
 
 func (r *Repo) SaveAusstellung(a *Ausstellung) error {
-	fmt.Println("ausstellung:", a)
 	stmt := `
 		UPDATE ausstellung SET titel=$1, untertitel=$2, typ=$3, jahr=$4, von=$5, bis=$6, ort=$7, venue=$8, kommentar=$9 WHERE id=$10
 	`
@@ -81,13 +80,11 @@ func (r *Repo) SaveAusstellung(a *Ausstellung) error {
 func (r *Repo) LoadAusstellung(id int) (*Ausstellung, error) {
 
 	stmt := "SELECT * FROM ausstellung WHERE id=$1"
-	fmt.Println("LoadAusstellung")
 
 	ausstellung := Ausstellung{Bilder: make([]Bild, 0), Fotos: make([]Foto, 0)}
 	err := pgxscan.Get(r.ctx, r.dbpool, &ausstellung, stmt, id)
 
 	if dbscan.NotFound(err) {
-		fmt.Println(dbscan.NotFound(err))
 		return nil, errors.NewWithCode(404, "not row found")
 	} else if err != nil {
 		return nil, errors.Wrap(err, "db error")
@@ -128,6 +125,16 @@ func (r *Repo) InsertSerie(s *Serie) (int, error) {
 	return returnid, errors.Wrap(err, "Could not insert serie %v", s)
 }
 
+func (r *Repo) SaveSerie(id int, s *Serie) error {
+
+	stmt := "UPDATE serie SET titel=$2, untertitel=$3, jahr=$4, jahrbis=$5, anzahl=$6, technik=$7, traeger=$8, hoehe=$9, breite=$10, tiefe=$11, phase=$12, anmerkungen=$13, kommentar=$14 where id=$1"
+
+	_, err := r.dbpool.Exec(r.ctx, stmt, id, s.Titel, s.Untertitel, s.Jahr, s.JahrBis, s.Anzahl, s.Technik, s.Träger, s.Höhe, s.Breite, s.Tiefe, s.Schaffensphase, s.Anmerkungen, s.Kommentar)
+	if err != nil {
+		return err
+	}
+	return err
+}
 func (r *Repo) UpdateSerie(id int, fieldmap map[string]interface{}) (*Serie, error) {
 
 	i := 2
@@ -167,8 +174,9 @@ func (r *Repo) LoadSerie(id int) (*Serie, error) {
 		return nil, err
 	}
 
-	err = r.Select(&serie.Bilder, "SELECT * FROM bild WHERE serie=$1", serie.Titel)
+	err = r.Select(&serie.Bilder, "SELECT * FROM bild WHERE serie_id=$1", serie.ID)
 	if err != nil {
+		fmt.Println("serien error")
 		return nil, err
 	}
 
@@ -179,32 +187,57 @@ func (r *Repo) LoadSerie(id int) (*Serie, error) {
 	return &serie, nil
 }
 
-func (r *Repo) LoadBilder(phase, orderBy string) ([]Bild, error) {
+func (r *Repo) LoadBilder(where map[string]interface{}, serienbilder bool, orderBy string) ([]Bild, error) {
+	fmt.Println("border by", orderBy, where)
+	var fields []string
+	var values []interface{}
 
 	stmt := "SELECT * FROM bild"
-	if phase != "" {
-		stmt += " WHERE phase='" + phase + "'"
-	}
-	if orderBy != "" {
-		stmt += " ORDER BY '" + orderBy + "' DESC"
+	if serienbilder {
+		stmt += " WHERE (serie_id is null OR serie_id is not null)"
 	} else {
-		stmt += " ORDER BY id DESC"
+		stmt += " WHERE serie_id is null "
 	}
 
+	if where != nil {
+		for k, v := range where {
+			i := 1
+			fields = append(fields, fmt.Sprintf(" %s=$%d ", k, i))
+			values = append(values, v)
+			i++
+		}
+	}
+
+	if len(fields) > 0 {
+		stmt += " AND "
+		stmt += strings.Join(fields, "AND")
+	}
+
+	switch orderBy {
+	case "updated":
+		stmt += " ORDER BY modified DESC"
+	case "id":
+		stmt += " ORDER BY id DESC"
+	default:
+		stmt += " ORDER BY id DESC"
+		// stmt += (" ORDER BY " + orderBy + " DESC")
+	}
+	fmt.Println("stmt:", stmt)
+
 	var bilder []Bild
-	err := r.Select(&bilder, stmt)
+	err := r.Select(&bilder, stmt, values...)
 	if err != nil {
-		return nil, err
+		return bilder, err
 	}
 	indexByID := make(map[int]int)
 	for i, bild := range bilder {
 		indexByID[bild.ID] = i
 	}
-	fmt.Println("bilder:", bilder)
+
 	var fotos []Foto
 	err = r.Select(&fotos, "SELECT * FROM foto WHERE id IN (SELECT foto_id FROM bild)")
 	if err != nil {
-		return nil, err
+		return bilder, err
 	}
 
 	for i, foto := range fotos {
@@ -212,10 +245,24 @@ func (r *Repo) LoadBilder(phase, orderBy string) ([]Bild, error) {
 			bilder[index].IndexFoto = &fotos[i]
 		}
 	}
-	// for i, _ := range bilder {
-	// 	fmt.Println(i, bilder[i].IndexFoto)
-	// }
-	// fmt.Println(indexByID)
+
+	var serien []Serie
+	err = r.Select(&serien, "SELECT * FROM serie WHERE id IN (SELECT serie_id FROM bild)")
+	if err != nil {
+		return bilder, err
+	}
+
+	serienByID := make(map[int]*Serie)
+	for i, serie := range serien {
+		serienByID[serie.ID] = &serien[i]
+	}
+
+	for i, bild := range bilder {
+		if bild.SerieID != nil && serienByID[*bild.SerieID] != nil {
+			bilder[i].Serie = serienByID[*bild.SerieID]
+		}
+	}
+
 	return bilder, nil
 }
 
@@ -233,14 +280,32 @@ func (r *Repo) LoadBild(id int) (*Bild, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	for _, f := range bild.Fotos {
+		if bild.IndexFotoID == f.ID {
+			bild.IndexFoto = &f
+		}
+	}
+
+	if bild.SerieID != nil {
+		bild.Serie = new(Serie)
+		err = pgxscan.Get(r.ctx, r.dbpool, bild.Serie, "SELECT * FROM serie WHERE id=$1", bild.SerieID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// if len(serien) > 0 {
+	// 	bild.Serie = &serien[0]
+	// }
+
 	return &bild, nil
 }
 
 func (r *Repo) InsertBild(bild *Bild) (int, error) {
 
-	stmt := "INSERT INTO bild (titel, jahr, technik, traeger, hoehe, breite, tiefe, flaeche, foto_id, anmerkungen, kommentar, ordnung, phase, teile) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id"
+	stmt := "INSERT INTO bild (titel, jahr, technik, traeger, hoehe, breite, tiefe, flaeche, foto_id, anmerkungen, kommentar, phase, teile, serie_id, dir) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, $15) RETURNING id"
 
-	row := r.dbpool.QueryRow(r.ctx, stmt, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Überordnung, bild.Schaffensphase, bild.Teile)
+	row := r.dbpool.QueryRow(r.ctx, stmt, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Schaffensphase, bild.Teile, bild.SerieID, bild.Directory)
 	var returnid int
 	err := row.Scan(&returnid)
 	return returnid, errors.Wrap(err, "Could not insert bild %v", bild)
@@ -248,15 +313,13 @@ func (r *Repo) InsertBild(bild *Bild) (int, error) {
 
 func (r *Repo) SaveBild(id int, bild *Bild) error {
 
-	stmt := "UPDATE bild set  titel=$2, jahr=$3, technik=$4, traeger=$5, hoehe=$6, breite=$7, tiefe=$8, flaeche=$9, foto_id=$10, anmerkungen=$11, kommentar=$12, ordnung=$13, phase=$14, teile=$15 where id=$1"
-	fmt.Println("saeBild:", bild.Schaffensphase)
-	i, err := r.dbpool.Exec(r.ctx, stmt, id, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Überordnung, bild.Schaffensphase, bild.Teile)
+	stmt := "UPDATE bild set  titel=$2, jahr=$3, technik=$4, traeger=$5, hoehe=$6, breite=$7, tiefe=$8, flaeche=$9, foto_id=$10, anmerkungen=$11, kommentar=$12, phase=$13, teile=$14, serie_id=$15, dir=$16 where id=$1"
+
+	_, err := r.dbpool.Exec(r.ctx, stmt, id, bild.Titel, bild.Jahr, bild.Technik, bild.Bildträger, bild.Höhe, bild.Breite, bild.Tiefe, bild.Fläche, bild.IndexFotoID, bild.Anmerkungen, bild.Kommentar, bild.Schaffensphase, bild.Teile, bild.SerieID, bild.Directory)
 	if err != nil {
 		return err
 	}
-	fmt.Println(bild.Titel)
 
-	fmt.Println("i:", i, err)
 	return err
 }
 
@@ -267,10 +330,17 @@ func (r *Repo) InsertFoto(id, index int, name string, size int, path, format str
 	row := r.dbpool.QueryRow(r.ctx, stmt, id, index, name, size, time.Now(), path, format, width, height, taken, caption, kommentar)
 	var returnid int
 	err := row.Scan(&returnid)
+	if err != nil {
+		fmt.Print(err)
+		return 0, errors.Wrap(err, "Couldn‘t insert foto")
+	}
 	bild, err := r.LoadBild(id)
 	if err == nil && bild.IndexFotoID == 0 {
 		bild.IndexFotoID = returnid
 		r.SaveBild(id, bild)
+	}
+	if err != nil {
+		return 0, errors.Wrap(err, "Couldn‘t load bild")
 	}
 
 	return returnid, errors.Wrap(err, "Could not insert foto %v", id)

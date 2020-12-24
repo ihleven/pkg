@@ -136,10 +136,31 @@ func (e *entry) minutesToDeadline() float64 {
 	return 0
 }
 
+func (p *OAuth2Prov) ForceRefresh(key string) error {
+	p.mu.Lock()
+	mgmt, ok := p.tokens[key]
+	p.mu.Unlock()
+	if !ok {
+		return errors.New("no mgmt entry for key %s", key)
+	}
+
+	if mgmt == nil {
+		return errors.New("empty mgmt entry for key %s", key)
+	}
+	newmgmt, err := p.RefreshMgmt(mgmt)
+	if err != nil {
+		return errors.New("Could not refresh mgmt %v", key)
+	}
+	p.tokens[key] = newmgmt
+
+	return nil
+}
+
 func (p *OAuth2Prov) GetAccessToken(key string) (string, error) {
 	p.mu.Lock()
 	mgmt, ok := p.tokens[key]
 	p.mu.Unlock()
+	fmt.Printf("GetAccessToken => %+v\n", mgmt)
 
 	if !ok {
 		return "", errors.New("no mgmt entry for key %s", key)
@@ -151,28 +172,30 @@ func (p *OAuth2Prov) GetAccessToken(key string) (string, error) {
 
 	remaining := mgmt.deadline.Sub(time.Now()).Minutes()
 
-	fmt.Printf(" ***************** %v -> %v **************\n\n\n", time.Now(), mgmt.deadline)
+	// fmt.Printf(" ***************** %v -> %v **************\n\n\n", time.Now(), mgmt.deadline)
 	if remaining <= 0 {
+		p.mu.Lock()
 		// refresh and wait for result
 		newmgmt, err := p.RefreshMgmt(mgmt)
 		if err == nil {
-			fmt.Printf(" ** successful token refesh 1: %s -> %+v\n", key, newmgmt.Token)
-			p.mu.Lock()
+			// fmt.Printf(" ** successful token refesh 1: %s -> %+v\n", key, newmgmt.Token)
+
 			p.tokens[key] = newmgmt
 			mgmt = newmgmt
 			remaining = mgmt.deadline.Sub(time.Now()).Minutes()
-			fmt.Printf(" ** successful token refesh: %s -> %+v %v \n", key, mgmt.Token, mgmt.deadline)
+			// fmt.Printf(" ** successful token refesh: %s -> %+v %v \n", key, mgmt.Token, mgmt.deadline)
 			p.mu.Unlock()
 			return mgmt.AccessToken, nil
 		} else {
+			p.mu.Unlock()
 			// TODO: how to handle error?
-			return "", errors.Wrap(err, "")
+			return "", errors.Wrap(err, "unable to refresh")
 		}
 	}
 
 	if remaining > 0 {
 		if remaining < 10 {
-			fmt.Printf(" ***************** triggering refesh: %s -> %f **************\n", key, remaining)
+			// fmt.Printf(" ***************** triggering refesh: %s -> %f **************\n", key, remaining)
 			// refresh token in background
 			go func(mgmt *tokenmgmt) {
 				newmgmt, err := p.RefreshMgmt(mgmt)
@@ -181,7 +204,7 @@ func (p *OAuth2Prov) GetAccessToken(key string) (string, error) {
 					p.tokens[key] = newmgmt
 					mgmt = newmgmt
 					remaining = mgmt.deadline.Sub(time.Now()).Minutes()
-					fmt.Printf(" ***************** successful early token refesh: %s -> %f **************\n", key, remaining)
+					// fmt.Printf(" ***************** successful early token refesh: %s -> %f **************\n", key, remaining)
 
 					p.mu.Unlock()
 				} else {
@@ -331,7 +354,7 @@ func (p *OAuth2Prov) RefreshMgmt(mgmt *tokenmgmt) (*tokenmgmt, error) {
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {mgmt.RefreshToken},
 	})
-	fmt.Printf("RefreshMgmt: response -> %+v %v \n", resp, err)
+
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to call https://my.hidrive.com/oauth2/token")
 	}
@@ -346,7 +369,7 @@ func (p *OAuth2Prov) RefreshMgmt(mgmt *tokenmgmt) (*tokenmgmt, error) {
 	if decerr != nil {
 		return nil, errors.Wrap(err, "failed to decode response")
 	}
-
+	fmt.Printf("RefreshMgmt -> %+v %v \n", newtoken, time.Now().Add(time.Second*time.Duration(newtoken.ExpiresIn)))
 	return &tokenmgmt{
 		Token:    &newtoken,
 		err:      err,
@@ -406,7 +429,7 @@ type TokenInfo struct {
 func (p OAuth2Prov) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if state := r.URL.Query().Get("authorize"); state != "" {
-		fmt.Println("asdfasdfasdfasdfsad", p.config)
+
 		params := url.Values{
 			"client_id":     {p.config.ClientID},
 			"response_type": {"code"},
@@ -421,7 +444,7 @@ func (p OAuth2Prov) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			fmt.Fprintf(w, "token => %+v\n", token)
 		}
-		fmt.Println("err:", err, token)
+
 		p.writeTokenFile()
 	}
 	tpl1 := `<html>

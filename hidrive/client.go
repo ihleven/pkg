@@ -1,7 +1,6 @@
 package hidrive
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -41,7 +40,7 @@ func (c *HiDriveClient) Request(method, endpoint string, params url.Values, body
 		return nil, &HiDriveError{ECode: 500, EMessage: "Failed to create new http request"}
 	}
 	request.Header.Set("Authorization", "Bearer "+token) // c.auth.GetAccessToken(authkey))
-	fmt.Println("Authorization", "Bearer "+token)
+
 	response, err := c.Client.Do(request)
 	if err != nil {
 		if os.IsTimeout(err) {

@@ -58,14 +58,14 @@ type Serie struct {
 	Jahr           int    `db:"jahr"       json:"jahr,omitempty"  `
 	Titel          string `db:"titel"      json:"titel"           `
 	Untertitel     string `db:"untertitel" json:"untertitel"      `
-	Anzahl         int
-	JahrBis        int    `db:"jahrbis"    json:"anzahl,omitempty"`
-	Technik        string `db:"technik"    json:"technik"         ` // Oel, Aquarell, Pastell, Radierung, Buntstifte, Tinte, Siebdruck
-	Träger         string `db:"traeger"    json:"traeger"         ` // Leinwand, Papier, Holz,
-	Höhe           int    `db:"hoehe"      json:"hoehe"           ` //
-	Breite         int    `db:"breite"     json:"breite"`           //
-	Tiefe          int    `db:"tiefe"      json:"tiefe"`            //
-	Anmerkungen    string `db:"anmerkungen" json:"anmerkungen"`     // Anmerkungen des Künstlers
+	Anzahl         int    `db:"anzahl"    json:"anzahl,omitempty"`
+	JahrBis        int    `db:"jahrbis"    json:"jahrbis,omitempty"`
+	Technik        string `db:"technik"    json:"technik"         `                 // Oel, Aquarell, Pastell, Radierung, Buntstifte, Tinte, Siebdruck
+	Träger         string `db:"traeger" schema:"traeger"   json:"traeger"         ` // Leinwand, Papier, Holz,
+	Höhe           int    `db:"hoehe"      schema:"hoehe" json:"hoehe"           `  //
+	Breite         int    `db:"breite"     json:"breite"`                           //
+	Tiefe          int    `db:"tiefe"      json:"tiefe"`                            //
+	Anmerkungen    string `db:"anmerkungen" json:"anmerkungen"`                     // Anmerkungen des Künstlers
 	Kommentar      string `db:"kommentar"  json:"kommentar"       `
 	Schaffensphase string `db:"phase"       json:"phase" schema:"phase"` // Natur
 	Bilder         []Bild `db:"-"          json:"bilder"           schema:"-"`
@@ -73,24 +73,26 @@ type Serie struct {
 }
 
 type Bild struct {
-	ID             int     `db:"id"          json:"id"`    //
-	Jahr           int     `db:"jahr"        json:"jahr"`  //
-	Titel          string  `db:"titel"       json:"titel"` //
-	Serie          *string `db:"serie"       json:"serie"`
-	SerieNr        int     `db:"serie_nr"    json:"serie_nr"`
-	Technik        string  `db:"technik"     json:"technik"`                    // Oel, Aquarell, Pastell, Radierung, Buntstifte, Tinte, Siebdruck
-	Bildträger     string  `db:"traeger"     json:"traeger" schema:"traeger"`   // Leinwand, Papier, Holz,
-	Höhe           int     `db:"hoehe"       json:"hoehe"       schema:"hoehe"` //
-	Breite         int     `db:"breite"      json:"breite"`                     //
-	Tiefe          int     `db:"tiefe"       json:"tiefe"`                      //
-	Fläche         float64 `db:"flaeche"     json:"flaeche"`                    // Bildfläche in qm
-	Anmerkungen    string  `db:"anmerkungen" json:"anmerkungen"`                // Anmerkungen des Künstlers
-	Kommentar      string  `db:"kommentar"   json:"kommentar"`                  // Kommentare zum Bild, nicht für die Öffentlichkeit gedacht
-	Überordnung    string  `db:"ordnung"     json:"ueberordnung"`               //
-	Schaffensphase string  `db:"phase"       json:"phase" schema:"phase"`       // Natur
-	Fotos          []Foto  `db:"-"           json:"fotos" `
-	IndexFotoID    int     `db:"foto_id"     json:"foto_id" schema:"foto_id"` //
-	IndexFoto      *Foto   `db:"foto"     json:"foto" schema:"-"`             //
+	ID          int     `db:"id"          json:"id"` //
+	Directory   string  `db:"dir"        json:"dir"`
+	Jahr        int     `db:"jahr"        json:"jahr"`  //
+	Titel       string  `db:"titel"       json:"titel"` //
+	SerieID     *int    `db:"serie_id"       json:"serie_id"`
+	Serie       *Serie  `db:"-"       json:"serie"`
+	SerieNr     int     `db:"serie_nr"    json:"serie_nr"`
+	Technik     string  `db:"technik"     json:"technik"`                    // Oel, Aquarell, Pastell, Radierung, Buntstifte, Tinte, Siebdruck
+	Bildträger  string  `db:"traeger"     json:"traeger" schema:"traeger"`   // Leinwand, Papier, Holz,
+	Höhe        int     `db:"hoehe"       json:"hoehe"       schema:"hoehe"` //
+	Breite      int     `db:"breite"      json:"breite"`                     //
+	Tiefe       int     `db:"tiefe"       json:"tiefe"`                      //
+	Fläche      float64 `db:"flaeche"     json:"flaeche"`                    // Bildfläche in qm
+	Anmerkungen string  `db:"anmerkungen" json:"anmerkungen"`                // Anmerkungen des Künstlers
+	Kommentar   string  `db:"kommentar"   json:"kommentar"`                  // Kommentare zum Bild, nicht für die Öffentlichkeit gedacht
+	// Überordnung    string  `db:"ordnung"     json:"ueberordnung"`               //
+	Schaffensphase string `db:"phase"       json:"phase" schema:"phase"` // Natur
+	Fotos          []Foto `db:"-"           json:"fotos" `
+	IndexFotoID    int    `db:"foto_id"     json:"foto_id" schema:"foto_id"` //
+	IndexFoto      *Foto  `db:"foto"     json:"foto" schema:"-"`             //
 	// Systematik     string `db:"-"    json:"sytematik"`    //
 	// Ordnung        string `db:"-"    json:"ordnung"`      //
 	// Hauptfoto   *Foto
@@ -99,6 +101,7 @@ type Bild struct {
 	// KatalogID     int
 	Teile    int        `db:"teile"       json:"teile"`
 	Modified *time.Time `db:"modified"    json:"modified"`
+	// SeriePtr *Serie     `db:"-"       json:"Serie"`
 }
 
 type Foto struct {

@@ -95,6 +95,15 @@ func (a *AusstellungHandler) GetUpdateDeleteAusstellung(r *http.Request, id int,
 			return nil, errors.Wrap(err, "Couldn‘t delete ausstellung: %v", id)
 		}
 
+		err = a.drive.Rmdir("ausstellungen/"+strconv.Itoa(id), username)
+		if errors.Code(err) == 404 {
+			fmt.Printf("no folder for ausstellung %d found\n", id)
+			return nil, nil
+		}
+		fmt.Println("error:", errors.Code(err), err)
+		if err != nil {
+			return nil, errors.Wrap(err, "Couldn‘t delete hidrive ausstellung folder %d", id)
+		}
 	}
 	return nil, nil
 }

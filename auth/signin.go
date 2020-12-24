@@ -56,6 +56,7 @@ func Handler() http.HandlerFunc {
 
 func SigninHandler(users map[string]string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("signin")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Origin, Accept, token")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
@@ -109,7 +110,7 @@ func SigninHandler(users map[string]string) http.HandlerFunc {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-
+		fmt.Println("signin success")
 		expirationTime := time.Now().Add(500 * time.Hour)
 		token, err := TokenString(credentials.Username, expirationTime)
 		if err != nil {
@@ -126,7 +127,7 @@ func SigninHandler(users map[string]string) http.HandlerFunc {
 			Name:     "token",
 			Value:    token,
 			Expires:  expirationTime,
-			Secure:   false, //scheme == "https",
+			Secure:   true, //scheme == "https",
 			HttpOnly: true,
 			// SameSite: http.SameSiteStrictMode,
 			Path: "/",
@@ -140,17 +141,19 @@ func SigninHandler(users map[string]string) http.HandlerFunc {
 func Welcome(w http.ResponseWriter, r *http.Request) {
 
 	claims, _, _ := GetClaims(r)
-	w.Write([]byte(fmt.Sprintf("Welcome %s!", claims.Username)))
+	json.NewEncoder(w).Encode(claims)
+	// w.Write([]byte(fmt.Sprintf("Welcome %s!", claims.Username)))
 }
 
 func SignoutHandler(w http.ResponseWriter, r *http.Request) {
 
+	fmt.Println("logout")
 	c := &http.Cookie{
-		Name:    "token",
-		Value:   "",
-		Path:    "/",
-		Expires: time.Unix(0, 0),
-
+		Name:     "token",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		Secure:   true,
 		HttpOnly: true,
 	}
 

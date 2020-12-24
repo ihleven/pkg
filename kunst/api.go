@@ -23,16 +23,17 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
+		head, id, tail := parseURLPath(r.URL.Path)
+
 		claims, _, err := auth.GetClaims(r)
-		if err != nil {
+		if err != nil && head != "signin" {
 			http.Error(w, "", 401)
 			return
 		}
 		username := claims.Username
 
 		// prefix, _ := shiftPath(r.URL.Path)
-		head, id, tail := parseURLPath(r.URL.Path)
-		fmt.Println("remainder:", head, id, tail)
+
 		var response interface{}
 
 		switch head {
@@ -47,7 +48,7 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 			}
 
 		case "serien":
-			err = SerienHandler.Dispatch(w, r, id, username)
+			err = SerienHandler.Dispatch(w, r, id, tail, username)
 
 		case "ausstellungen":
 			switch {
@@ -69,7 +70,7 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 			}
 
 		case "thumbs":
-			fmt.Println(" +++ thumbs ->", tail)
+
 			body, err := drive.Thumbnail(tail, r.URL.Query(), username)
 			if err != nil {
 				break
@@ -80,11 +81,10 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 			}
 
 		case "file":
-			fmt.Println(" +++ file ->", tail)
+
 			var body io.ReadCloser
 			body, err = drive.File(tail, username)
 			if err == nil {
-				fmt.Println("file,", err)
 				defer body.Close()
 				if _, err := io.Copy(w, body); err != nil {
 					err = errors.Wrap(err, "failed to Copy hidrive file to responseWriter")
@@ -95,25 +95,35 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 			// das sollte sich zur auth admin page ausweiten: * übersicht hd accounts, ‘nen account authentifizieren/löschen, lokale auth als matt notwendig um auf die Seite zu kommen
 			drive.Auth.ServeHTTP(w, r)
 
+		case "refresh":
+			err = drive.Auth.ForceRefresh(username)
+
 		case "signin":
 			// lokale authentifizierung mit usernamen wolfgang / matt
 			auth.SigninHandler(usermap)(w, r)
+		case "welcome":
+			// lokale authentifizierung mit usernamen wolfgang / matt
+			auth.Welcome(w, r)
 
 		case "signout":
 			auth.SignoutHandler(w, r)
 
 		}
-		fmt.Println("err:", err)
+
 		if err != nil {
 
 			code := errors.Code(err)
+			if code == 65535 {
+				code = 500
+			}
 
 			http.Error(w, err.Error(), code)
 			return
 		}
 		if response != nil {
-
 			render(response, w)
+		} else {
+			// w.WriteHeader(http.StatusNoContent)
 		}
 	}
 
@@ -144,7 +154,7 @@ func parseURLPath(p string) (string, int, string) {
 	if err == nil {
 		return handler, id, p[i+i2+1:]
 	}
-	fmt.Println("handler:", handler, "p:", p[i:])
+
 	return handler, 0, p[i:]
 }
 

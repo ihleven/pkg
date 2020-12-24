@@ -1,7 +1,6 @@
 package hidrive
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -32,13 +31,11 @@ func HiDriveHandler(drive *Drive) http.HandlerFunc {
 
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		fmt.Println("host:", r.Host, r.URL)
 		var username string
 		claims, _, err := auth.GetClaims(r)
 		if err == nil {
 			username = claims.Username
 		}
-		fmt.Printf(" * claims.Username: %s\n", username)
 
 		// head, tail, prefix := drive.pathfunc(r)
 		head, tail := shiftPath(r.URL.Path)
@@ -49,7 +46,6 @@ func HiDriveHandler(drive *Drive) http.HandlerFunc {
 
 		case head == "dir":
 			response, err = drive.GetDir(tail, username)
-			fmt.Printf("hidrive dir: %s for %s -> %v\n", tail, username, err)
 
 		case head == "file":
 			params := r.URL.Query()

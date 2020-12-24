@@ -1,7 +1,6 @@
 package kunst
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -70,10 +69,12 @@ func (b *BildHandler) parseFormSubmitBildCreateOrUpdate(r *http.Request, id int,
 		if err != nil {
 			return nil, errors.Wrap(err, "Couldn‘t insert bild: %v", bild)
 		}
-
+		err = b.repo.Update("bild", id, map[string]interface{}{"dir": fmt.Sprintf("bilder/%d", id)})
+		if err != nil {
+			return nil, errors.Wrap(err, "Couldn‘t update bild directory: %v", bild)
+		}
 		_, err = b.drive.Mkdir("bilder", strconv.Itoa(id), authuser)
 		if err != nil && errors.Code(err) != 409 { // 409 wenn dir ex.
-			fmt.Println("err:", err)
 			return nil, errors.Wrap(err, "Couldn‘t mkdir bilder/%s", id)
 		}
 
@@ -93,11 +94,17 @@ func (b *BildHandler) parseFormSubmitBildCreateOrUpdate(r *http.Request, id int,
 
 func (b *BildHandler) List(query url.Values, authuser string) ([]Bild, error) {
 
-	var phase string
+	where := make(map[string]interface{})
+	serienbilder := false
+
 	if p := query.Get("phase"); Schaffensphase(p).IsValid() {
-		phase = p
+		where["phase"] = p
 	}
-	bilder, err := b.repo.LoadBilder(phase, "")
+	if s := query.Get("serie"); s == "true" {
+		serienbilder = true
+	}
+
+	bilder, err := b.repo.LoadBilder(where, serienbilder, query.Get("sort"))
 	if err != nil {
 		err = errors.Wrap(err, "error in bilder list")
 	}
@@ -131,6 +138,7 @@ func (b *BildHandler) Update(id int, r *http.Request) (*Bild, error) {
 
 func (b *BildHandler) Delete(id int, authuser string) error {
 
+	bild, _ := b.repo.LoadBild(id)
 	err := b.repo.Delete("foto", "bild_id", id)
 	if err != nil {
 		return errors.Wrap(err, "Couldn‘t delete fotos of bild %d", id)
@@ -139,9 +147,17 @@ func (b *BildHandler) Delete(id int, authuser string) error {
 	if err != nil {
 		return errors.Wrap(err, "Couldn‘t delete bild %d", id)
 	}
-	err = b.drive.Rmdir("bilder/"+strconv.Itoa(id), authuser)
-	if err != nil {
-		return errors.Wrap(err, "Couldn‘t delete hidrive bild folder %d", id)
+	if bild.Serie != nil && bild.IndexFoto != nil {
+
+		err = b.drive.DeleteFile(bild.IndexFoto.Path, authuser)
+		if err != nil {
+			return errors.Wrap(err, "Couldn‘t delete foto %d", bild.IndexFoto.Path)
+		}
+	} else {
+		err = b.drive.Rmdir("bilder/"+strconv.Itoa(id), authuser)
+		if err != nil {
+			return errors.Wrap(err, "Couldn‘t delete hidrive bild folder %d", id)
+		}
 	}
 	// w.WriteHeader(http.StatusNoContent)
 	return nil
@@ -149,25 +165,27 @@ func (b *BildHandler) Delete(id int, authuser string) error {
 
 func (h *BildHandler) Upload(w http.ResponseWriter, r *http.Request, id int, authuser string) error {
 
-	// func Upload( ) {
+	bild, err := h.repo.LoadBild(id)
+	if err != nil {
+		err = errors.Wrap(err, "Error loading bild %v", id)
+	}
 
 	r.ParseMultipartForm(10 << 20)
 
 	name := r.Form.Get("name")
 	modtime := r.Form.Get("modtime")
 
-	file, header, err := r.FormFile("file")
+	file, _, err := r.FormFile("file")
 	if err != nil {
 		return errors.Wrap(err, "")
 	}
 	defer file.Close()
 
-	dirname := "bilder/" + strconv.Itoa(id)
-	meta, err := h.drive.CreateFile(dirname, file, name, modtime, authuser)
+	// dirname := "bilder/" + strconv.Itoa(id)
+	meta, err := h.drive.CreateFile(bild.Directory, file, name, modtime, authuser)
 	if err != nil {
 		return errors.Wrap(err, "")
 	}
-	fmt.Printf("meta: %#v %v\n", meta, header.Filename)
 	// meta, err = drive.GetMeta(path.Join(dir, meta.Name), username)
 	// fmt.Printf("meta2: %#v %v -> %v\n", meta, header.Filename, err)
 	// if err != nil {
@@ -179,11 +197,12 @@ func (h *BildHandler) Upload(w http.ResponseWriter, r *http.Request, id int, aut
 	if t, err := time.Parse("2006:01:02 15:04:05", meta.Image.Exif.DateTimeOriginal); err == nil {
 		dtorig = t
 	}
-	u, err := h.repo.InsertFoto(
-		id, 0, meta.Name, int(meta.Size), path.Join(dirname, name),
+	unescapedName, _ := url.QueryUnescape(meta.Name)
+	_, err = h.repo.InsertFoto(
+		id, 0, unescapedName, int(meta.Size), path.Join(bild.Directory, unescapedName),
 		meta.MIMEType, meta.Image.Width, meta.Image.Height, dtorig, meta.ID, "", //fmt.Sprintf("%#v", meta.Image.Exif),
 	)
-	fmt.Println("id", u)
+
 	if err != nil {
 		return errors.Wrap(err, "")
 	}
@@ -196,29 +215,37 @@ type SerieHandler struct {
 	drive *hidrive.Drive
 }
 
-func (h *SerieHandler) Dispatch(w http.ResponseWriter, r *http.Request, id int, authuser string) error {
+func (h *SerieHandler) Dispatch(w http.ResponseWriter, r *http.Request, id int, tail, authuser string) error {
 
 	var err error
 	var response interface{}
 
-	switch r.Method {
-	case "GET":
-		if id == 0 {
+	if id == 0 {
+		if r.Method == "GET" {
 			response, err = h.List(r.URL.Query(), authuser)
-		} else {
-			response, err = h.Retrieve(id)
 		}
+		if r.Method == "POST" {
+			response, err = h.Create(r, authuser)
+		}
+	} else if tail == "/bilder" {
 
-	case "POST", "PUT":
-		response, err = h.Create(r, authuser)
+		response, err = h.AddBild(id, r, authuser)
+	} else {
 
-	case "PATCH":
-		response, err = h.Update(id, r)
+		switch r.Method {
+		case "GET":
+			response, err = h.Retrieve(id)
 
-	case "DELETE":
-		err = h.Delete(id, authuser)
+		case "POST", "PUT":
+			response, err = h.Update(id, r)
+
+		case "PATCH":
+			response, err = h.Update(id, r)
+
+		case "DELETE":
+			err = h.Delete(id, authuser)
+		}
 	}
-
 	if err == nil {
 		render(response, w)
 	}
@@ -237,13 +264,13 @@ func (h *SerieHandler) Create(r *http.Request, authuser string) (*Serie, error) 
 		return nil, err
 	}
 
-	var serie Serie
-	err = schema.NewDecoder().Decode(&serie, r.PostForm)
+	var form Serie
+	err = schema.NewDecoder().Decode(&form, r.PostForm)
 	if err != nil {
 		return nil, errors.Wrap(err, "Error decoding form")
 	}
 
-	id, err := h.repo.InsertSerie(&serie)
+	id, err := h.repo.InsertSerie(&form)
 	if err != nil {
 		return nil, errors.Wrap(err, "")
 	}
@@ -261,24 +288,32 @@ func (h *SerieHandler) Retrieve(id int) (*Serie, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "error:")
 	}
+	bilder, err := h.repo.LoadBilder(map[string]interface{}{"serie_id": serie.ID}, true, "")
+	if err != nil {
+		return nil, errors.Wrap(err, "Couldn‘t load bilder for serie %d", id)
+	}
+	serie.Bilder = bilder
 
 	return serie, nil
 }
 
 func (h *SerieHandler) Update(id int, r *http.Request) (*Serie, error) {
 
-	var fieldmap map[string]interface{}
-	err := json.NewDecoder(r.Body).Decode(&fieldmap)
+	err := r.ParseMultipartForm(0)
 	if err != nil {
-		return nil, errors.Wrap(err, "error:")
+		return nil, err
 	}
-	defer r.Body.Close()
+	var form Serie
+	err = schema.NewDecoder().Decode(&form, r.PostForm)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error decoding form")
+	}
 
-	serie, err := h.repo.UpdateSerie(id, fieldmap)
+	err = h.repo.SaveSerie(id, &form)
 	if err != nil {
 		return nil, errors.Wrap(err, "error:")
 	}
-	return serie, nil
+	return h.repo.LoadSerie(id)
 }
 
 func (h *SerieHandler) Delete(id int, authuser string) error {
@@ -297,4 +332,74 @@ func (h *SerieHandler) Delete(id int, authuser string) error {
 	}
 	// w.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+func (h *SerieHandler) AddBild(id int, r *http.Request, authuser string) (*Bild, error) {
+
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		return nil, err
+	}
+
+	name := r.Form.Get("name")
+	modtime := r.Form.Get("modtime")
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		return nil, errors.Wrap(err, "")
+	}
+	defer file.Close()
+
+	// jetzt haben wir das hochgeladene Bild in der Hand =>
+
+	// Bild in DB anlegen, dazu Daten der Serie übernehmen
+	serie, err := h.repo.LoadSerie(id)
+	if err != nil {
+		return nil, errors.Wrap(err, "")
+	}
+	bildID, err := h.repo.InsertBild(&Bild{
+		SerieID: &serie.ID,
+		Technik: serie.Technik, Bildträger: serie.Träger,
+		Höhe: serie.Höhe, Breite: serie.Breite, Tiefe: serie.Tiefe,
+		Jahr: serie.Jahr, Schaffensphase: serie.Schaffensphase,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "Couldn‘t insert bild")
+	}
+	h.repo.Update("bild", bildID, map[string]interface{}{"dir": fmt.Sprintf("serien/%d/%d", serie.ID, bildID)})
+	if err != nil {
+		return nil, errors.Wrap(err, "Couldn‘t update bild directory: %v", bildID)
+	}
+
+	// Verzeichnis für das Bild anlegen
+	dirname := "serien/" + strconv.Itoa(serie.ID)
+	_, err = h.drive.Mkdir(dirname, strconv.Itoa(bildID), authuser)
+	if err != nil && errors.Code(err) != 409 { // 409 wenn dir ex.
+		return nil, errors.Wrap(err, "Couldn‘t mkdir %s/%d", dirname, bildID)
+	}
+
+	// hochgeladene Bilddatei im neuen Verz. ablegen
+	dirname = fmt.Sprintf("%s/%d", dirname, bildID)
+	meta, err := h.drive.CreateFile(dirname, file, name, modtime, authuser)
+	if err != nil {
+		return nil, errors.Wrap(err, "Couldn‘t create hidrive file %s/%s", dirname, name)
+	}
+
+	var dtorig time.Time
+	if t, err := time.Parse("2006:01:02 15:04:05", meta.Image.Exif.DateTimeOriginal); err == nil {
+		dtorig = t
+	}
+	unescapedName, _ := url.QueryUnescape(meta.Name)
+	fotoid, err := h.repo.InsertFoto(
+		bildID, 0, unescapedName, int(meta.Size), path.Join(dirname, unescapedName),
+		meta.MIMEType, meta.Image.Width, meta.Image.Height, dtorig, meta.ID, "", //fmt.Sprintf("%#v", meta.Image.Exif),
+	)
+	fmt.Printf("foto: %v\n", fotoid)
+	if err != nil {
+		return nil, errors.Wrap(err, "")
+	}
+
+	bild, err := h.repo.LoadBild(bildID)
+	fmt.Printf("bild: %v\n", bild)
+	return bild, err
 }

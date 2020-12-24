@@ -12,8 +12,8 @@ var jwtKey = []byte("my_secret_key")
 
 // Claims
 type Claims struct {
-	Username string `json:"username"`
-	jwt.StandardClaims
+	Username           string `json:"username"`
+	jwt.StandardClaims `json:"-"`
 }
 
 func TokenString(username string, expirationTime time.Time) (string, error) {

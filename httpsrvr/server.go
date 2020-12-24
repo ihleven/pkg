@@ -122,7 +122,6 @@ func (s *httpServer) Register(route string, handler interface{}) {
 	// 	s.dispatcher.Register(route, ADRHandler(handlerType))
 
 	default:
-		fmt.Println(route, handler, "default", handlerType)
 		s.log.Info("Could not register route '%v': unknown handler type %T", route, handler)
 		os.Exit(1)
 	}

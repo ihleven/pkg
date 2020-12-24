@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
@@ -181,7 +182,6 @@ func (d *Drive) GetDir(path string, authuser string) (*DirResponse, error) {
 	params["members"] = []string{"all"}
 	params["fields"] = []string{metafields + "," + memberfields}
 
-	fmt.Printf("drive.GetDir(%s, %s, %s)\n", hidrivepath, authuser, token)
 	body, err := d.client.Request("GET", "/dir", params, nil, token)
 	if err != nil {
 		return nil, err
@@ -198,7 +198,6 @@ func (d *Drive) GetDir(path string, authuser string) (*DirResponse, error) {
 }
 
 func (d *Drive) GetMeta(pfad string, authuser string) (*Meta, error) {
-	fmt.Println("GetMEta:", pfad, authuser, metafields+","+imagefields)
 	token, err := d.Auth.GetAccessToken(authuser)
 	if err != nil {
 		return nil, errors.Wrap(err, "Couldn‘t get valid auth token for authuser %q", authuser)
@@ -243,7 +242,6 @@ func (d *Drive) GetMeta(pfad string, authuser string) (*Meta, error) {
 }
 
 func (d *Drive) File(pfad string, username string) (io.ReadCloser, error) {
-	fmt.Println("thumbnail:", d.prefix, path.Join(d.prefix, pfad))
 	token, err := d.Auth.GetAccessToken(username)
 	if err != nil {
 		return nil, err
@@ -260,7 +258,6 @@ func (d *Drive) File(pfad string, username string) (io.ReadCloser, error) {
 }
 
 func (d *Drive) Thumbnail(pfad string, query url.Values, username string) (io.ReadCloser, error) {
-	fmt.Println("thumbnail:", d.prefix, path.Join(d.prefix, pfad))
 	token, err := d.Auth.GetAccessToken(username)
 	if err != nil {
 		return nil, err
@@ -330,43 +327,79 @@ func (d *Drive) Rmdir(dirname, authuser string) error {
 
 	return nil
 }
+func (d *Drive) DeleteFile(filename string, authuser string) error {
+	token, err := d.Auth.GetAccessToken(authuser)
+	if err != nil {
+		return errors.Wrap(err, "Couldn‘t get valid auth token for authuser %q", authuser)
+	}
+
+	params := url.Values{
+		"path": {path.Join(d.prefix, filename)},
+	}
+	_, err = d.client.Request("DELETE", "/file", params, nil, token)
+	if err != nil {
+		return errors.Wrap(err, "Error in delete request")
+	}
+
+	return nil
+}
+
 func (d *Drive) CreateFile(folder string, body io.Reader, name string, modtime string, authuser string) (*Meta, error) {
 
 	token, err := d.Auth.GetAccessToken(authuser)
 	if err != nil {
 		return nil, errors.Wrap(err, "Couldn‘t get valid auth token for authuser %q", authuser)
 	}
-	fmt.Println("CreateFile:", folder, name, modtime, authuser, token, body)
 	respBody, err := d.client.Request("POST", "/file", url.Values{
 		"dir":      {path.Join(d.prefix, folder)},
 		"name":     {name},
 		"on_exist": {"autoname"},
 		"mtime":    {modtime},
 	}, body, token)
-
-	// bytes, _ := ioutil.ReadAll(respBody)
-	// fmt.Println("createfile:", err, path.Join(d.prefix, folder), name, modtime, authuser, token, string(bytes))
 	if err != nil {
 		return nil, errors.Wrap(err, "Error in post request")
 	}
 	defer respBody.Close()
 
-	// s, err := ioutil.ReadAll(respBody)
-	// fmt.Println("body:", string(s))
-	var meta struct {
-		Meta
-		Image *struct {
-			Height int                    `json:"height"`
-			Width  int                    `json:"width"`
-			Exif   map[string]interface{} `json:"exif"`
+	bytes, err := ioutil.ReadAll(respBody)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error reading request body")
+	}
+	fmt.Println("createfile:", err, path.Join(d.prefix, folder), name, modtime, authuser, token, string(bytes))
+
+	type Response struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Path     string `json:"path"`
+		Type     string `json:"type"`
+		CTime    int64  `json:"ctime"`
+		MTime    int64  `json:"mtime"`
+		HasDirs  bool   `json:"has_dirs"`
+		Readable bool   `json:"readable"`
+		Writable bool   `json:"writable"`
+		MIMEType string `json:"mime_type"`
+		Size     uint64 `json:"size"`
+		Image    *struct {
+			Height int `json:"height"`
+			Width  int `json:"width"`
+			Exif   struct {
+				DateTimeOriginal string
+				ExifImageHeight  string
+				ExifImageWidth   string
+				Orientation      string
+			} `json:"exif"`
 		} `json:"image"`
 	}
-	err = json.NewDecoder(respBody).Decode(&meta)
+	var r Response
+	// err = json.NewDecoder(respBody).Decode(&meta)
+	err = json.Unmarshal(bytes, &r)
 	if err != nil {
-		fmt.Println("upload err:", err)
 		return nil, errors.Wrap(err, "Error decoding post result")
 	}
-	meta.Meta.Image = &Image{Height: meta.Image.Height, Width: meta.Image.Width, Exif: Exif{DateTimeOriginal: meta.Image.Exif["DateTimeOriginal"].(string)}}
-	// fmt.Println("upload meta:", meta)
-	return &meta.Meta, nil
+
+	// meta.Meta.Image = &Image{Height: meta.Image.Height, Width: meta.Image.Width, Exif: Exif{DateTimeOriginal: meta.Image.Exif["DateTimeOriginal"].(string)}}
+
+	return &Meta{r.ID, r.Name, r.Path, r.Type, r.CTime, r.MTime, r.HasDirs, r.Readable, r.Writable, r.MIMEType, r.Size, 0, "",
+		&Image{Height: r.Image.Height, Width: r.Image.Width},
+	}, nil
 }
