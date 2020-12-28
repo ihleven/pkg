@@ -24,6 +24,7 @@ func parseFormSubmitAusstellung(r *http.Request, id int) (*Ausstellung, error) {
 	decoder := schema.NewDecoder()
 	// decoder.IgnoreUnknownKeys(true)
 	err = decoder.Decode(&ausstellung, r.PostForm)
+	fmt.Println(" +++++++++++++ parseFormSubmitAusstellung", err)
 	if err != nil {
 		return nil, errors.Wrap(err, "Error decoding form")
 	}
@@ -59,10 +60,21 @@ func (a *AusstellungHandler) ListCreateAusstellungen(w http.ResponseWriter, r *h
 		if err != nil && errors.Code(err) != 409 { // 409 wenn dir ex.
 			return errors.Wrap(err, "Couldn‘t mkdir ausstellung/%d", id)
 		}
+
+		ausstellung, err = a.repo.LoadAusstellung(id)
+		if err != nil {
+			return errors.Wrap(err, "Couldn‘t load data for created Ausstellung %d", id)
+		}
+		render(ausstellung, w)
+		return nil
 	}
+
 	ausstellungen, err := a.repo.LoadAusstellungen()
 	if err != nil {
-		return errors.Wrap(err, "")
+		return errors.Wrap(err, "Couldn‘t load Ausstellungen")
+	}
+	if ausstellungen == nil {
+		ausstellungen = []Ausstellung{}
 	}
 	render(ausstellungen, w)
 	return nil
@@ -83,11 +95,12 @@ func (a *AusstellungHandler) GetUpdateDeleteAusstellung(r *http.Request, id int,
 
 	case "PUT":
 		ausstellung, err := parseFormSubmitAusstellung(r, id)
-
-		err = a.repo.SaveAusstellung(ausstellung)
+		err = a.repo.SaveAusstellung(id, ausstellung)
+		fmt.Println("PUT ausstellung:", ausstellung, err)
 		if err != nil {
 			return nil, errors.Wrap(err, "Couldn‘t save ausstellung: %v", id)
 		}
+		return a.repo.LoadAusstellung(id)
 
 	case "DELETE":
 		err := a.repo.Delete("ausstellung", "id", id)

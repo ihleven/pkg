@@ -15,7 +15,14 @@ import (
 func NewRepo(database string) (*Repo, error) {
 
 	ctx := context.Background()
-	dbpool, err := pgxpool.Connect(ctx, fmt.Sprintf("postgresql://%s@localhost:5432/%s", database, database))
+	var dbpool *pgxpool.Pool
+	var err error
+	switch database {
+	case "tunnel":
+		dbpool, err = pgxpool.Connect(ctx, "postgresql://wi@localhost:3333/wi")
+	default:
+		dbpool, err = pgxpool.Connect(ctx, fmt.Sprintf("postgresql://%s@localhost:5432/%s", database, database))
+	}
 	if err != nil {
 		return nil, errors.Wrap(err, "Unable to connect to database: %q", database)
 	}
@@ -52,6 +59,7 @@ func (r *Repo) LoadAusstellungen() ([]Ausstellung, error) {
 	var ausstellungen []Ausstellung
 	err := r.Select(&ausstellungen, stmt)
 	if err != nil {
+		fmt.Println("error in LoadAusstellungen", err)
 		return nil, err
 	}
 
@@ -68,11 +76,11 @@ func (r *Repo) InsertAusstellung(a *Ausstellung) (int, error) {
 	return returnid, errors.Wrap(err, "Could not insert ausstellung %v", a)
 }
 
-func (r *Repo) SaveAusstellung(a *Ausstellung) error {
+func (r *Repo) SaveAusstellung(id int, a *Ausstellung) error {
 	stmt := `
 		UPDATE ausstellung SET titel=$1, untertitel=$2, typ=$3, jahr=$4, von=$5, bis=$6, ort=$7, venue=$8, kommentar=$9 WHERE id=$10
 	`
-	_, err := r.dbpool.Exec(r.ctx, stmt, a.Titel, a.Untertitel, a.Typ, a.Jahr, a.Von, a.Bis, a.Ort, a.Venue, a.Kommentar, a.ID)
+	_, err := r.dbpool.Exec(r.ctx, stmt, a.Titel, a.Untertitel, a.Typ, a.Jahr, a.Von, a.Bis, a.Ort, a.Venue, a.Kommentar, id)
 	return errors.Wrap(err, "Could not save ausstellung %v", a)
 }
 

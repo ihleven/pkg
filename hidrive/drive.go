@@ -8,17 +8,19 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 
 	"github.com/ihleven/errors"
 )
 
 // NewDrive creates a new hidrive
-func NewDrive(oap *OAuth2Prov, pathfunc func(*http.Request) (string, string, string)) *Drive {
+func NewDrive(oap *OAuth2Prov, prefix string, pathfunc func(*http.Request) (string, string, string)) *Drive {
 
 	var Drive = Drive{
 		Auth:     oap,
 		client:   NewClient(oap, ""),
-		prefix:   "/wolfgang-ihle",
+		prefix:   prefix,
+		homes:    map[string]string{"matt": "/users/matt.ihle"},
 		pathfunc: pathfunc,
 	}
 	return &Drive
@@ -28,15 +30,8 @@ type Drive struct {
 	client   *HiDriveClient
 	Auth     *OAuth2Prov
 	prefix   string
+	homes    map[string]string
 	pathfunc func(*http.Request) (string, string, string)
-}
-
-func PrefixPath(prefix string) func(*http.Request) (string, string, string) {
-	return func(r *http.Request) (string, string, string) {
-		head, tail := shiftPath(r.URL.Path)
-
-		return head, tail, prefix
-	}
 }
 
 // func (d *PrefixDrive) rootpath(r *http.Request) (string, string, error) {
@@ -46,7 +41,7 @@ func PrefixPath(prefix string) func(*http.Request) (string, string, string) {
 // 		return errors.NewWithCode(401, "Claims error")
 // 	}
 // 	head, tail := shiftPath(r.URL.Path)
-// homes: map[string]string{"matt": "/users/matt.ihle"}
+//
 // 	return head, path.Join(d.prefix, tail)
 // }
 
@@ -162,8 +157,18 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (d *Drive) FullPath(path string, authuser string) string {
-	return d.prefix + path // replace home by homedirpath
+func (d *Drive) HidrivePath(pfad string, authuser string) string {
+	fmt.Println(d.prefix, d.homes[authuser], authuser)
+	if d.prefix != "" {
+		return path.Join(d.prefix, pfad)
+	}
+	if homedir, ok := d.homes[authuser]; ok {
+		pfad = strings.Replace(pfad, "/home", homedir, 1)
+	} else {
+		pfad = strings.Replace(pfad, "/home", "/", 1)
+	}
+
+	return path.Clean(pfad)
 }
 
 func (d *Drive) GetDir(path string, authuser string) (*DirResponse, error) {
@@ -173,12 +178,10 @@ func (d *Drive) GetDir(path string, authuser string) (*DirResponse, error) {
 		return nil, errors.Wrap(err, "Couldn‘t get valid auth token for authuser %q", authuser)
 	}
 
-	hidrivepath := d.prefix + path // replace home by homedirpath
-
 	params := make(map[string][]string)
 
 	memberfields := "members,members.id,members.name,members.nmembers,members.size,members.type,members.mime_type,members.mtime,members.image.height,members.image.width,members.image.exif"
-	params["path"] = []string{hidrivepath}
+	params["path"] = []string{d.HidrivePath(path, authuser)}
 	params["members"] = []string{"all"}
 	params["fields"] = []string{metafields + "," + memberfields}
 
@@ -203,10 +206,10 @@ func (d *Drive) GetMeta(pfad string, authuser string) (*Meta, error) {
 		return nil, errors.Wrap(err, "Couldn‘t get valid auth token for authuser %q", authuser)
 	}
 
-	hidrivepath := path.Join(d.prefix, pfad) // replace home by homedirpath
+	// hidrivepath := path.Join(d.prefix, pfad) // replace home by homedirpath
 
 	params := url.Values{
-		"path":   {hidrivepath},
+		"path":   {d.HidrivePath(pfad, authuser)},
 		"fields": {metafields + "," + imagefields},
 	}
 	body, err := d.client.Request("GET", "/meta", params, nil, token)
@@ -241,14 +244,14 @@ func (d *Drive) GetMeta(pfad string, authuser string) (*Meta, error) {
 	// return nil, errors.New("neither file nor dir")
 }
 
-func (d *Drive) File(pfad string, username string) (io.ReadCloser, error) {
-	token, err := d.Auth.GetAccessToken(username)
+func (d *Drive) File(pfad string, authuser string) (io.ReadCloser, error) {
+	token, err := d.Auth.GetAccessToken(authuser)
 	if err != nil {
 		return nil, err
 	}
 	query := make(url.Values)
 	if len(pfad) > 1 {
-		query["path"] = []string{path.Join(d.prefix, pfad)}
+		query["path"] = []string{d.HidrivePath(pfad, authuser)}
 	}
 	body, err := d.client.Request("GET", "/file", query, nil, token)
 	if err != nil {
@@ -257,13 +260,13 @@ func (d *Drive) File(pfad string, username string) (io.ReadCloser, error) {
 	return body, nil
 }
 
-func (d *Drive) Thumbnail(pfad string, query url.Values, username string) (io.ReadCloser, error) {
-	token, err := d.Auth.GetAccessToken(username)
+func (d *Drive) Thumbnail(pfad string, query url.Values, authuser string) (io.ReadCloser, error) {
+	token, err := d.Auth.GetAccessToken(authuser)
 	if err != nil {
 		return nil, err
 	}
 	if len(pfad) > 1 {
-		query["path"] = []string{path.Join(d.prefix, pfad)}
+		query["path"] = []string{d.HidrivePath(pfad, authuser)}
 	}
 	body, err := d.client.Request("GET", "/file/thumbnail", query, nil, token)
 	if err != nil {
@@ -292,7 +295,7 @@ func (d *Drive) Mkdir(dirname, basename, authuser string) (interface{}, error) {
 	// }
 
 	params := url.Values{
-		"path": {path.Join(d.prefix, dirname, basename)},
+		"path": {path.Join(d.HidrivePath(dirname, authuser), basename)},
 		// "on_exist": {"autoname"},
 	}
 
@@ -309,6 +312,7 @@ func (d *Drive) Mkdir(dirname, basename, authuser string) (interface{}, error) {
 	}
 	return &dir, nil
 }
+
 func (d *Drive) Rmdir(dirname, authuser string) error {
 
 	token, err := d.Auth.GetAccessToken(authuser)
@@ -317,7 +321,7 @@ func (d *Drive) Rmdir(dirname, authuser string) error {
 	}
 
 	params := url.Values{
-		"path":      {path.Join(d.prefix, dirname)},
+		"path":      {d.HidrivePath(dirname, authuser)},
 		"recursive": {"true"},
 	}
 	_, err = d.client.Request("DELETE", "/dir", params, nil, token)
@@ -327,6 +331,7 @@ func (d *Drive) Rmdir(dirname, authuser string) error {
 
 	return nil
 }
+
 func (d *Drive) DeleteFile(filename string, authuser string) error {
 	token, err := d.Auth.GetAccessToken(authuser)
 	if err != nil {
@@ -334,7 +339,7 @@ func (d *Drive) DeleteFile(filename string, authuser string) error {
 	}
 
 	params := url.Values{
-		"path": {path.Join(d.prefix, filename)},
+		"path": {d.HidrivePath(filename, authuser)},
 	}
 	_, err = d.client.Request("DELETE", "/file", params, nil, token)
 	if err != nil {
@@ -351,7 +356,7 @@ func (d *Drive) CreateFile(folder string, body io.Reader, name string, modtime s
 		return nil, errors.Wrap(err, "Couldn‘t get valid auth token for authuser %q", authuser)
 	}
 	respBody, err := d.client.Request("POST", "/file", url.Values{
-		"dir":      {path.Join(d.prefix, folder)},
+		"dir":      {d.HidrivePath(folder, authuser)},
 		"name":     {name},
 		"on_exist": {"autoname"},
 		"mtime":    {modtime},
@@ -399,7 +404,10 @@ func (d *Drive) CreateFile(folder string, body io.Reader, name string, modtime s
 
 	// meta.Meta.Image = &Image{Height: meta.Image.Height, Width: meta.Image.Width, Exif: Exif{DateTimeOriginal: meta.Image.Exif["DateTimeOriginal"].(string)}}
 
-	return &Meta{r.ID, r.Name, r.Path, r.Type, r.CTime, r.MTime, r.HasDirs, r.Readable, r.Writable, r.MIMEType, r.Size, 0, "",
-		&Image{Height: r.Image.Height, Width: r.Image.Width},
-	}, nil
+	meta := Meta{r.ID, r.Name, r.Path, r.Type, r.CTime, r.MTime, r.HasDirs, r.Readable, r.Writable, r.MIMEType, r.Size, 0, "", nil}
+	if r.Image != nil {
+		meta.Image = &Image{Height: r.Image.Height, Width: r.Image.Width}
+	}
+
+	return &meta, nil
 }

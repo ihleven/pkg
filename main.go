@@ -48,7 +48,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	hd := hidrive.NewDrive(oap, hidrive.PrefixPath("/wolfgang-ihle"))
+	hd := hidrive.NewDrive(oap, "/wolfgang-ihle", nil)
 	usermap := map[string]string{
 		"matt":     "$2a$14$4zu/jv7JO377BBg0k6upZ.Ul0jqO9enCBhHlAUyoKJrcySb8JMzW2",
 		"wolfgang": "$2a$14$KWkdJOJLa4FkKHyXZ9xFceutb8qqkQ0V2Ue1.Ce9Rn0OD69.tDHHC",
@@ -58,6 +58,7 @@ func main() {
 
 	srv.Register("/api", kunst.ApiHandler(hd, repo, usermap))
 	srv.Register("/hidrive-token-callback", http.HandlerFunc(oap.HandleAuthorizeCallback))
+	srv.Register("/hidrive", hidrive.HidriveHandler(hidrive.NewDrive(oap, "", nil)))
 
 	srv.ListenAndServe()
 }
