@@ -18,6 +18,8 @@ func NewRepo(database string) (*Repo, error) {
 	var dbpool *pgxpool.Pool
 	var err error
 	switch database {
+	case "local":
+		dbpool, err = pgxpool.Connect(ctx, "postgresql://mi@localhost:5432/mi")
 	case "tunnel":
 		dbpool, err = pgxpool.Connect(ctx, "postgresql://wi@localhost:3333/wi")
 	default:

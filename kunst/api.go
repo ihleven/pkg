@@ -41,11 +41,7 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 			fmt.Fprintf(w, "username: %v", username)
 
 		case "bilder":
-			if tail == "/hidrive" {
-				err = BilderHandler.Upload(w, r, id, username)
-			} else {
-				err = BilderHandler.Dispatch(w, r, id, username)
-			}
+			err = BilderHandler.Dispatch(w, r, id, username)
 
 		case "serien":
 			err = SerienHandler.Dispatch(w, r, id, tail, username)
@@ -56,6 +52,7 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 				err = AusstellungsHandler.ListCreateAusstellungen(w, r, username)
 			case id > 0 && tail == "":
 				response, err = AusstellungsHandler.GetUpdateDeleteAusstellung(r, id, username)
+				fmt.Println("ausstellungen:", id, tail, response, err)
 
 			case tail == "/documents":
 				response, err = AusstellungsHandler.AusstellungDocuments(r, id, username)
@@ -66,7 +63,16 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 			// case "PATCH":
 			// 	a.repo.Update("foto", id, map[string]interface{}{"kommentar": "DELETE"})
 			case "DELETE":
-				err = repo.Update("foto", id, map[string]interface{}{"kommentar": "DELETE"})
+				var foto *Foto
+				foto, err = repo.LoadFoto(id)
+				if err != nil {
+					break
+				}
+				err = drive.DeleteFile(foto.Path, username)
+				if err != nil {
+					break
+				}
+				err = repo.Delete("foto", "id", id)
 			}
 
 		case "thumbs":
@@ -109,6 +115,7 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 			auth.SignoutHandler(w, r)
 
 		}
+		fmt.Println("error:", err)
 
 		if err != nil {
 
@@ -121,6 +128,7 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 			return
 		}
 		if response != nil {
+			fmt.Println("response:", response)
 			render(response, w)
 		} else {
 			// w.WriteHeader(http.StatusNoContent)

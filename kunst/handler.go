@@ -13,85 +13,6 @@ import (
 	"github.com/ihleven/pkg/hidrive"
 )
 
-type BildHandler struct {
-	repo  *Repo
-	drive *hidrive.Drive
-}
-
-func (b *BildHandler) Dispatch(w http.ResponseWriter, r *http.Request, id int, authuser string) error {
-
-	var err error
-	var response interface{}
-
-	switch r.Method {
-	case "GET":
-		if id == 0 {
-			response, err = b.List(r.URL.Query(), authuser)
-		} else {
-			response, err = b.Retrieve(id)
-		}
-
-	case "POST", "PUT":
-		response, err = b.parseFormSubmitBildCreateOrUpdate(r, id, authuser)
-
-	case "PATCH":
-		response, err = b.Update(id, r)
-
-	case "DELETE":
-		err = b.Delete(id, authuser)
-	}
-
-	if err == nil {
-		render(response, w)
-	}
-	return errors.Wrap(err, "")
-}
-
-func (b *BildHandler) parseFormSubmitBildCreateOrUpdate(r *http.Request, id int, authuser string) (*Bild, error) {
-
-	err := r.ParseMultipartForm(0)
-	if err != nil {
-		return nil, err
-	}
-
-	var bild Bild
-
-	err = schema.NewDecoder().Decode(&bild, r.PostForm)
-	if err != nil {
-		return nil, errors.Wrap(err, "Error decoding form")
-	}
-	if id != 0 && bild.ID != 0 && id != bild.ID {
-		return nil, errors.NewWithCode(400, "id in url (%s) and bild (%d) differ", id, bild.ID)
-	}
-
-	if id == 0 {
-		id, err = b.repo.InsertBild(&bild)
-		if err != nil {
-			return nil, errors.Wrap(err, "Couldn‘t insert bild: %v", bild)
-		}
-		err = b.repo.Update("bild", id, map[string]interface{}{"dir": fmt.Sprintf("bilder/%d", id)})
-		if err != nil {
-			return nil, errors.Wrap(err, "Couldn‘t update bild directory: %v", bild)
-		}
-		_, err = b.drive.Mkdir("bilder", strconv.Itoa(id), authuser)
-		if err != nil && errors.Code(err) != 409 { // 409 wenn dir ex.
-			return nil, errors.Wrap(err, "Couldn‘t mkdir bilder/%s", id)
-		}
-
-	} else {
-		err = b.repo.SaveBild(id, &bild)
-		if err != nil {
-			return nil, errors.Wrap(err, "Couldn‘t save bild: %v", bild)
-		}
-	}
-
-	bildptr, err := b.repo.LoadBild(id)
-	if err != nil {
-		return nil, errors.Wrap(err, "Couldn‘t load bild: %v", id)
-	}
-	return bildptr, nil
-}
-
 func (b *BildHandler) List(query url.Values, authuser string) ([]Bild, error) {
 
 	where := make(map[string]interface{})
@@ -160,53 +81,6 @@ func (b *BildHandler) Delete(id int, authuser string) error {
 		}
 	}
 	// w.WriteHeader(http.StatusNoContent)
-	return nil
-}
-
-func (h *BildHandler) Upload(w http.ResponseWriter, r *http.Request, id int, authuser string) error {
-
-	bild, err := h.repo.LoadBild(id)
-	if err != nil {
-		err = errors.Wrap(err, "Error loading bild %v", id)
-	}
-
-	r.ParseMultipartForm(10 << 20)
-
-	name := r.Form.Get("name")
-	modtime := r.Form.Get("modtime")
-
-	file, _, err := r.FormFile("file")
-	if err != nil {
-		return errors.Wrap(err, "")
-	}
-	defer file.Close()
-
-	// dirname := "bilder/" + strconv.Itoa(id)
-	meta, err := h.drive.CreateFile(bild.Directory, file, name, modtime, authuser)
-	if err != nil {
-		return errors.Wrap(err, "")
-	}
-	// meta, err = drive.GetMeta(path.Join(dir, meta.Name), username)
-	// fmt.Printf("meta2: %#v %v -> %v\n", meta, header.Filename, err)
-	// if err != nil {
-	// 	http.Error(w, errors.Wrap(err, "error:").Error(), 500)
-	// 	return
-	// }
-
-	var dtorig time.Time
-	if t, err := time.Parse("2006:01:02 15:04:05", meta.Image.Exif.DateTimeOriginal); err == nil {
-		dtorig = t
-	}
-	unescapedName, _ := url.QueryUnescape(meta.Name)
-	_, err = h.repo.InsertFoto(
-		id, 0, unescapedName, int(meta.Size), path.Join(bild.Directory, unescapedName),
-		meta.MIMEType, meta.Image.Width, meta.Image.Height, dtorig, meta.ID, "", //fmt.Sprintf("%#v", meta.Image.Exif),
-	)
-
-	if err != nil {
-		return errors.Wrap(err, "")
-	}
-	render(meta, w)
 	return nil
 }
 
