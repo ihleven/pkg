@@ -2,7 +2,6 @@ package kunst
 
 import (
 	"fmt"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -62,9 +61,9 @@ func (b *BildHandler) Dispatch(w http.ResponseWriter, r *http.Request, id int, a
 			type Sizer interface {
 				Size() int64
 			}
-			log.Printf("Name: %#v\n", multipartFileHeader.Filename)
-			log.Printf("Size: %#v\n", file.(Sizer).Size())
-			log.Printf("MIME: %#v\n", http.DetectContentType(fileHeader))
+			// log.Printf("Name: %#v\n", multipartFileHeader.Filename)
+			// log.Printf("Size: %#v\n", file.(Sizer).Size())
+			// log.Printf("MIME: %#v\n", http.DetectContentType(fileHeader))
 			response, err = b.Upload(file, r.Form, id, authuser)
 
 			if err != nil {
