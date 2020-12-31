@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -64,6 +65,9 @@ func NewOauthProvider(config AppConfig) (*OAuth2Prov, error) {
 func (p *OAuth2Prov) readTokenFile() error {
 	bytes, err := ioutil.ReadFile(p.tokenFile)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return errors.Wrap(err, "failed to read token file")
 	}
 	tokens := make(map[string]*Token)
