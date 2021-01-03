@@ -54,9 +54,17 @@ func (r *Repo) Select(dst interface{}, query string, args ...interface{}) error 
 	return nil
 }
 
-func (r *Repo) LoadAusstellungen() ([]Ausstellung, error) {
+func (r *Repo) LoadAusstellungen(typ, orderBy string) ([]Ausstellung, error) {
 
-	stmt := "SELECT * FROM ausstellung ORDER BY id ASC"
+	where := map[string]string{
+		"EINZEL":      " WHERE typ='Einzelausstellung' ",
+		"BETEILIGUNG": " WHERE typ='Ausstellungsbeteiligung' ",
+	}[typ]
+
+	if orderBy == "" {
+		orderBy = "jahr"
+	}
+	stmt := fmt.Sprintf("SELECT * FROM ausstellung %s ORDER BY %s DESC", where, orderBy)
 
 	var ausstellungen []Ausstellung
 	err := r.Select(&ausstellungen, stmt)

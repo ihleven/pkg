@@ -69,7 +69,7 @@ func (a *AusstellungHandler) ListCreateAusstellungen(w http.ResponseWriter, r *h
 		return nil
 	}
 
-	ausstellungen, err := a.repo.LoadAusstellungen()
+	ausstellungen, err := a.repo.LoadAusstellungen(r.URL.Query().Get("type"), r.URL.Query().Get("sorting"))
 	if err != nil {
 		return errors.Wrap(err, "Couldn‘t load Ausstellungen")
 	}
