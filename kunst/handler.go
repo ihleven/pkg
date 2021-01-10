@@ -21,6 +21,10 @@ func (b *BildHandler) List(query url.Values, authuser string) ([]Bild, error) {
 	if p := query.Get("phase"); Schaffensphase(p).IsValid() {
 		where["phase"] = p
 	}
+	fmt.Println(strconv.Atoi(query.Get("teile")))
+	if i, err := strconv.Atoi(query.Get("teile")); err == nil {
+		where["teile"] = i
+	}
 	if s := query.Get("serie"); s == "true" {
 		serienbilder = true
 	}

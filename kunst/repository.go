@@ -120,6 +120,38 @@ func (r *Repo) LoadAusstellung(id int) (*Ausstellung, error) {
 	return &ausstellung, nil
 }
 
+// LoadKatalog ...
+func (r *Repo) LoadKataloge() ([]Katalog, error) {
+
+	kataloge := []Katalog{}
+	err := r.Select(&kataloge, "SELECT * FROM katalog ORDER BY jahr DESC")
+
+	if dbscan.NotFound(err) {
+		return nil, errors.NewWithCode(404, "not row found")
+	} else if err != nil {
+		return nil, errors.Wrap(err, "db error")
+	}
+
+	return kataloge, nil
+}
+
+// LoadKatalog ...
+func (r *Repo) LoadKatalog(id int) (*Katalog, error) {
+
+	stmt := "SELECT * FROM katalog WHERE id=$1"
+
+	katalog := Katalog{}
+	err := pgxscan.Get(r.ctx, r.dbpool, &katalog, stmt, id)
+
+	if dbscan.NotFound(err) {
+		return nil, errors.NewWithCode(404, "not row found")
+	} else if err != nil {
+		return nil, errors.Wrap(err, "db error")
+	}
+
+	return &katalog, nil
+}
+
 func (r *Repo) LoadSerien() ([]Serie, error) {
 
 	stmt := "SELECT * FROM serie ORDER BY id ASC"
@@ -206,7 +238,7 @@ func (r *Repo) LoadSerie(id int) (*Serie, error) {
 }
 
 func (r *Repo) LoadBilder(where map[string]interface{}, serienbilder bool, orderBy string) ([]Bild, error) {
-	fmt.Println("border by", orderBy, where)
+	fmt.Println("LoadBilder ->", orderBy, where)
 	var fields []string
 	var values []interface{}
 
