@@ -266,8 +266,10 @@ func (r *Repo) LoadBilder(where map[string]interface{}, serienbilder bool, order
 	switch orderBy {
 	case "updated":
 		stmt += " ORDER BY modified DESC"
-	case "id":
-		stmt += " ORDER BY id DESC"
+	case "jahr":
+		stmt += " ORDER BY jahr DESC"
+	case "name":
+		stmt += " ORDER BY titel ASC"
 	default:
 		stmt += " ORDER BY id DESC"
 		// stmt += (" ORDER BY " + orderBy + " DESC")
