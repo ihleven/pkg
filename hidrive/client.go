@@ -1,6 +1,7 @@
 package hidrive
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -34,7 +35,7 @@ type HiDriveClient struct {
 func (c *HiDriveClient) Request(method, endpoint string, params url.Values, body io.Reader, token string) (io.ReadCloser, error) {
 
 	url := c.baseURL + endpoint + "?" + params.Encode()
-
+	fmt.Printf("hidrive request to %s\n", url)
 	request, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, &HiDriveError{ECode: 500, EMessage: "Failed to create new http request"}

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/ihleven/pkg/hidrive"
 )
 
 type Schaffensphase string
@@ -45,11 +47,19 @@ type Ausstellung struct { // Exhibition
 }
 
 type Katalog struct {
-	ID    int
-	Code  string
-	Name  string
-	Jahr  int
-	Datum time.Time
+	ID         int `db:"id"           json:"id"`
+	Code       string
+	Titel      string
+	Untertitel string
+	Jahr       int
+	Datum      *time.Time
+	Kommentar  string `db:"kommentar"    json:"kommentar"`
+
+	Modified *time.Time `db:"modified" json:"modified"`
+
+	IndexFoto *hidrive.Meta  `db:"-"        json:"foto"`
+	Fotos     []hidrive.Meta `db:"-"        json:"fotos"`
+	Dokumente interface{}    `db:"-"        json:"dokumente"`
 }
 
 type Serie struct {

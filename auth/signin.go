@@ -127,7 +127,7 @@ func SigninHandler(users map[string]string) http.HandlerFunc {
 			Name:     "token",
 			Value:    token,
 			Expires:  expirationTime,
-			Secure:   true, //scheme == "https",
+			Secure:   false, //scheme == "https",
 			HttpOnly: true,
 			// SameSite: http.SameSiteStrictMode,
 			Path: "/",

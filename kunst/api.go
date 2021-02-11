@@ -20,6 +20,7 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 	BilderHandler := BildHandler{repo, drive}
 	SerienHandler := SerieHandler{repo, drive}
 	AusstellungsHandler := AusstellungHandler{repo, drive}
+	KatalogHandler := KatalogHandler(repo, drive)
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -58,6 +59,9 @@ func ApiHandler(drive *hidrive.Drive, repo *Repo, usermap map[string]string) htt
 				response, err = AusstellungsHandler.AusstellungDocuments(r, id, username)
 
 			}
+		case "kataloge":
+			err = KatalogHandler(w, r, id, username)
+
 		case "fotos":
 			switch r.Method {
 			// case "PATCH":
