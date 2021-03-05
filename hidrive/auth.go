@@ -153,6 +153,7 @@ func (p *OAuth2Prov) ForceRefresh(key string) error {
 	}
 	newmgmt, err := p.RefreshMgmt(mgmt)
 	if err != nil {
+		fmt.Println("err:", err)
 		return errors.New("Could not refresh mgmt %v", key)
 	}
 	p.tokens[key] = newmgmt

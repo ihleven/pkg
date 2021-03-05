@@ -29,7 +29,7 @@ func HidriveHandler(drive *Drive) http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-
+		fmt.Println("khlkhlkhlkhjkh")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Origin, Accept, token")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))

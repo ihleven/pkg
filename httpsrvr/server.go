@@ -105,6 +105,10 @@ func (s *httpServer) ShutdownWaiter(quit <-chan os.Signal, waitForGracefulShutdo
 
 func (s *httpServer) Register(route string, handler interface{}) {
 
+	// if route == "/" {
+	// 	s.dispatcher.Register(route)
+	// }
+
 	switch handlerType := handler.(type) {
 	case http.Handler:
 		s.dispatcher.Register(route, handlerType)

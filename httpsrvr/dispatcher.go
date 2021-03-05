@@ -1,6 +1,7 @@
 package httpsrvr
 
 import (
+	"fmt"
 	"net/http"
 	"path"
 	"strings"
@@ -43,11 +44,28 @@ func (d *shiftPathDispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		// values.Add("_reqNumber", strconv.FormatInt(reqNumber, 10))
 		// r.URL.RawQuery = values.Encode()
 	}
+
 	// fmt.Println("dispatch => ", r.URL.Path)
-	head, tail = shiftPath(r.URL.Path)
+
 	// if d.debug {
 	// 	color.Green(" * dispatching: %s -> %s\n", head, tail)
 	// }
+	fmt.Println(" * before loop:")
+
+	// for i, lookup := 0, d.routes; i < 10; i++ {
+	// 	head, r.URL.Path = shiftPath(r.URL.Path)
+	// 	h, ok := lookup[head]
+	// 	switch t := h.(type) {
+	// 	case *shiftPathDispatcher:
+	// 		lookup = h
+	// 	default:
+
+	// 	}
+
+	// 	fmt.Printf("loop: %s %s %T %v\n", head, r.URL.Path, route, ok)
+	// }
+
+	head, tail = shiftPath(r.URL.Path)
 	route, ok := d.routes[head]
 	switch {
 	case ok:
