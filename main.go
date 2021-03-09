@@ -59,6 +59,27 @@ func main() {
 	srv.Register("/api", kunst.ApiHandler(hd, repo, usermap))
 	srv.Register("/hidrive-token-callback", http.HandlerFunc(oap.HandleAuthorizeCallback))
 	srv.Register("/hidrive", hidrive.HidriveHandler(hidrive.NewDrive(oap, "", nil)))
+	// srv.Register("/hidrive", hidrive.HidriveHandler(hidrive.NewDrive(oap, "", nil)))
+
+	// srv.Register("/api", namedHandler("api"))
+	srv.Register("/api/v1", namedHandler("apiV1"))
+	srv.Register("/", http.FileServer(http.Dir(".")))
 
 	srv.ListenAndServe()
+}
+
+func info(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("info")
+	w.Write([]byte("info"))
+}
+
+func namedHandler(name string) http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.Context().Value("reqid")
+		count := r.Context().Value("counter")
+		// fmt.Printf("namedHandler %s => %s\n", name, r.URL.Path)
+		fmt.Fprintf(w, "GET %s => %s | %v | %v", name, r.URL.Path, id, count)
+
+	}
 }
