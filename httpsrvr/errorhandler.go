@@ -33,11 +33,12 @@ func Reqlog(name string, debug bool, logger logger, handler ErrorHandler) http.H
 type ErrorHandler func(http.ResponseWriter, *http.Request) error
 
 func (h ErrorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
+	debug := r.Context().Value("debug").(bool)
 	err := h(w, r)
 
 	if err != nil {
-		HandleError(w, r, err, false)
+
+		HandleError(w, r, err, debug)
 		return
 	}
 }
@@ -55,7 +56,7 @@ func HandleError(w http.ResponseWriter, r *http.Request, err error, debug bool) 
 	if code == math.MaxUint16 {
 		code = 500
 	}
-
+	w.WriteHeader(code)
 	if debug {
 		http.Error(w, fmt.Sprintf("%+v", err), code)
 	} else {

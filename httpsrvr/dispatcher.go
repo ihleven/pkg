@@ -7,79 +7,66 @@ import (
 	"strings"
 )
 
-func NewDispatcher() *route {
-
-	return &route{children: make(map[string]route), handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		w.Write([]byte("info"))
-	})}
-}
-
-type route struct {
-	handler  http.Handler
-	children map[string]route
-}
-
-func (d *route) GetHandler(route string) (http.Handler, string) {
-	head, tail := shiftPath(route)
-	fmt.Printf("GetHandler => %q - %q     %v\n", head, tail, d)
-	if disp, ok := d.children[head]; ok {
-		return disp.GetHandler(tail)
+func NewDispatcher(handler http.Handler) *dispatcher {
+	if handler == nil {
+		handler = http.NotFoundHandler()
 	}
-	fmt.Printf("GetHandler => %v\n", d)
-	return d.handler, route
+	return &dispatcher{children: make(map[string]*dispatcher), handler: handler}
 }
 
-func (d *route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	// var (
-	// 	start time.Time
-	// 	path  string
-	// )
-
-	// start = time.Now()
-	// path = r.URL.Path
-
-	// defer func() {
-	// 	requestCount := atomic.AddUint64(&d.counter, 1) // atomic.LoadUint64(&d.counter)
-	// 	color.Green("request %d: %s => %v\n", requestCount, path, time.Since(start))
-	// }()
-
-	handler, route := d.GetHandler(r.URL.Path)
-	r.URL.Path = route
-	handler.ServeHTTP(w, r)
+type dispatcher struct {
+	handler  http.Handler
+	children map[string]*dispatcher
+	preserve bool
 }
 
-func (r route) Register(path string, handler http.Handler) {
-	fmt.Println("****register", &handler, path)
-	// if path == "/" {
-	// 	fmt.Println("register", &handler, r)
-	// 	r.handler = handler
-	// 	return
-	// }
+func (r *dispatcher) PreservePath(preserve bool) *dispatcher {
+
+	r.preserve = preserve
+	return r
+}
+
+func (r *dispatcher) Register(path string, handler http.Handler) *dispatcher {
 
 	head, tail := shiftPath(path)
 
-	switch tail {
-	case "/":
-		r.children[head] = route{children: make(map[string]route), handler: handler}
+	switch {
+	case path == "/":
+		// root level
+		r.handler = handler
+		return r
+	case tail == "/":
+		// child route
+		r.children[head] = NewDispatcher(handler) // {children: make(map[string]*dispatcher), handler: handler}
+		return r.children[head]
+
 	default:
+		// nested child route
 		if _, ok := r.children[head]; !ok {
-			r.children[head] = route{children: make(map[string]route), handler: http.NotFoundHandler()}
+			r.children[head] = NewDispatcher(r.handler) // &dispatcher{children: make(map[string]*dispatcher), handler: r.handler}
 		}
-		r.children[head].Register(tail, handler)
+		return r.children[head].Register(tail, handler)
 	}
 }
 
-// func (d *shiftPathDispatcher) registerSubRoute(head, tail string, handler http.Handler) {
+func (d *dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-// 	subDispatcher, ok := d.routes[head]
-// 	if !ok {
-// 		// subDispatcher =  // NewDispatcher(d.routes[head], false, d.debug)
-// 		d.routes[head] = shiftPathDispatcher{routes: make(map[string]shiftPathDispatcher), roothandler: handler}
-// 	}
-// 	subDispatcher.Register(tail, handler)
-// }
+	disp, tail := d.getDispatcher(r.URL.Path)
+	if !disp.preserve {
+		fmt.Println("preserve:", disp)
+		r.URL.Path = tail
+	}
+	disp.handler.ServeHTTP(w, r)
+}
+func (d *dispatcher) getDispatcher(route string) (*dispatcher, string) {
+	head, tail := shiftPath(route)
+	// fmt.Printf("GetHandler => %q - %q     %v\n", head, tail, d)
+	if disp, ok := d.children[head]; ok {
+		return disp.getDispatcher(tail)
+	}
+	// fmt.Printf("GetHandler => %v\n", d)
+	return d, route
+}
 
 func shiftPath(p string) (head, tail string) {
 	p = path.Clean("/" + p)
