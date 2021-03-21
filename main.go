@@ -54,7 +54,7 @@ func main() {
 		"wolfgang": "$2a$14$KWkdJOJLa4FkKHyXZ9xFceutb8qqkQ0V2Ue1.Ce9Rn0OD69.tDHHC",
 	}
 
-	srv := httpsrvr.NewServer("", flags.Port, false, flags.Debug, nil)
+	srv := httpsrvr.NewServer(flags.Port, flags.Debug)
 
 	srv.Register("/api", kunst.ApiHandler(hd, repo, usermap))
 	srv.Register("/hidrive-token-callback", http.HandlerFunc(oap.HandleAuthorizeCallback))
@@ -65,7 +65,7 @@ func main() {
 	srv.Register("/api/v1", namedHandler("apiV1"))
 	srv.Register("/", http.FileServer(http.Dir(".")))
 
-	srv.ListenAndServe()
+	srv.Run()
 }
 
 func info(w http.ResponseWriter, r *http.Request) {

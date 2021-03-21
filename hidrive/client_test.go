@@ -12,7 +12,7 @@ func TestHome(t *testing.T) {
 		t.Errorf("oap.Token == nil, want it to be a Token")
 	}
 
-	hidrive := NewClient(10, nil)
+	hidrive := NewClient()
 
 	if hidrive == nil {
 		t.Errorf("hidrive == nil, want it to be not nil")

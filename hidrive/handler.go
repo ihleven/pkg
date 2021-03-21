@@ -1,10 +1,9 @@
 package hidrive
 
 import (
-	"fmt"
+	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"path"
 	"strings"
 
@@ -21,112 +20,126 @@ func shiftPath(p string) (head, tail string) {
 	return p[1:i], p[i:]
 }
 
-func HidriveHandler(drive *Drive) http.HandlerFunc {
+func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	usermap := map[string]string{
-		"matt":     "$2a$14$4zu/jv7JO377BBg0k6upZ.Ul0jqO9enCBhHlAUyoKJrcySb8JMzW2",
-		"wolfgang": "$2a$14$KWkdJOJLa4FkKHyXZ9xFceutb8qqkQ0V2Ue1.Ce9Rn0OD69.tDHHC",
+	w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+	claims, _, err := auth.GetClaims(r)
+
+	token, err := d.manager.GetAuthToken(claims.Username)
+	if token == nil || err != nil {
+		http.Error(w, errors.NewWithCode(401, "Couldn‘t get valid auth token for authuser %q", claims.Username).Error(), 401)
+		return
 	}
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("khlkhlkhlkhjkh")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Origin, Accept, token")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	// conf, ok := d.confmap[claims.Username]
+	// if !ok {
+	// 	conf = config{"anonymous", "/", []string{}}
+	// }
 
-		var username string
-		claims, _, err := auth.GetClaims(r)
-		if err == nil {
-			username = claims.Username
-		}
+	head, tail := shiftPath(r.URL.Path)
 
-		// head, tail, prefix := drive.pathfunc(r)
-		head, tail := shiftPath(r.URL.Path)
+	switch head {
 
-		var response Responder
-
-		switch head {
-		case "auth":
-			// hidrive authentifizierung
-			// das sollte sich zur auth admin page ausweiten: * übersicht hd accounts, ‘nen account authentifizieren/löschen, lokale auth als matt notwendig um auf die Seite zu kommen
-			drive.Auth.ServeHTTP(w, r)
-
-		case "refresh":
-			err = drive.Auth.ForceRefresh(username)
-
-		case "signin":
-			// lokale authentifizierung mit usernamen wolfgang / matt
-			auth.SigninHandler(usermap)(w, r)
-		case "welcome":
-			// lokale authentifizierung mit usernamen wolfgang / matt
-			auth.Welcome(w, r)
-
-		case "signout":
-			auth.SignoutHandler(w, r)
-
-		case "dir":
-			response, err = drive.GetDir(tail, username)
-		case "meta":
-			response, err = drive.GetMeta(tail, username)
-		case "thumbs":
-
-			body, err := drive.Thumbnail(tail, r.URL.Query(), username)
-			if err != nil {
-				break
-			}
-			defer body.Close()
-			if _, err := io.Copy(w, body); err != nil {
-				err = errors.Wrap(err, "failed to Copy hidrive file to responseWriter")
-			}
-		case "file":
-			token, e := drive.Auth.GetAccessToken(username)
-			if err != nil {
-				err = e
-			}
-			params := r.URL.Query()
-			if len(tail) > 1 {
-				params["path"] = []string{path.Join(drive.prefix, tail)}
-			}
-			body, err := drive.client.Request("GET", "/file", params, nil, token)
+	case "dir":
+		switch r.Method {
+		case http.MethodGet:
+			dir, err := d.client.GetDir(d.clean(tail, token.Alias), "", "", 0, 0, "", "", token.AccessToken)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
-			defer body.Close()
-			if _, err := io.Copy(w, body); err != nil {
-				http.Error(w, errors.Wrap(err, "failed to Copy hidrive file to responseWriter").Error(), 500)
-				return
-			}
-		default:
-			var token string
-			token, err = drive.Auth.GetAccessToken(username)
+			json.NewEncoder(w).Encode(dir)
 
-			query := url.Values{"path": []string{drive.HidrivePath(r.URL.Path, username)}}
+		case http.MethodPost:
+			_, err = d.Mkdir(tail, claims.Username)
 
-			var body io.ReadCloser
-			body, err = drive.client.Request("GET", "/file", query, nil, token)
-			if err == nil {
-				_, err = io.Copy(w, body)
-			} else {
-				fmt.Println(err)
-			}
-
-			// body, err := drive.client.Request("GET", "/file", url.Values{"path": {r.URL.Path}}, nil, username)
-			// if err == nil {
-			// 	_, err = io.Copy(w, body)
-			// }
-
+		case http.MethodDelete:
+			err = d.Rmdir(tail, claims.Username)
 		}
-
+	case "meta":
+		meta, err := d.client.GetMeta(d.clean(tail, claims.Username), "", "", token.AccessToken)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		if response != nil {
+		json.NewEncoder(w).Encode(meta)
 
-			response.Respond(w, "")
+		// switch meta.Type {
+		// case "dir":
+		// 	dir, err := d.GetDir(pfad, authuser)
+		// 	return dir, nil
+		// }
+
+	case "files":
+		body, err := d.client.GetFile("", tail[1:], token.AccessToken)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		defer body.Close()
+		if _, err := io.Copy(w, body); err != nil {
+			http.Error(w, errors.Wrap(err, "failed to Copy hidrive file to responseWriter").Error(), 500)
+			return
+		}
+	case "serve":
+
+		body, err := d.client.GetFile(d.clean(tail, token.Alias), "", token.AccessToken)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		defer body.Close()
+		if _, err := io.Copy(w, body); err != nil {
+			http.Error(w, errors.Wrap(err, "failed to Copy hidrive file to responseWriter").Error(), 500)
+			return
 		}
 
+	case "thumbs":
+		params := r.URL.Query()
+		if len(tail) > 1 {
+			params["path"] = []string{tail}
+		}
+		body, err := d.client.Request("GET", "/file/thumbnail", params, nil, token.AccessToken) //url.Values{"pid": {tail[1:]}})
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		defer body.Close()
+		if _, err := io.Copy(w, body); err != nil {
+			http.Error(w, errors.Wrap(err, "failed to Copy hidrive file to responseWriter").Error(), 500)
+			return
+		}
+
+	default:
+		meta, err := d.GetMeta(r.URL.Path, claims.Username)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		json.NewEncoder(w).Encode(&meta)
+		// body, err := d.client.GetFile(d.clean(r.URL.Path, token.Alias), "", token.AccessToken)
+		// // body, err := d.client.Request("GET", "/file", url.Values{"path": {"/" + head + tail}}, nil, "")
+		// if err != nil {
+		// 	fmt.Println(err)
+		// 	if hderr, ok := err.(*HidriveError); ok {
+		// 		fmt.Println(d.clean(path.Join(r.URL.Path, "index.html"), token.Alias))
+		// 		if hderr.ErrorCode == 666 {
+
+		// 			body, err = d.client.GetFile(d.clean(path.Join(r.URL.Path, "index.html"), token.Alias), "", token.AccessToken)
+		// 		}
+		// 	}
+		// 	if err != nil {
+		// 		http.Error(w, err.Error(), 500)
+		// 		return
+		// 	}
+		// }
+		// if _, err := io.Copy(w, body); err != nil {
+		// 	http.Error(w, errors.Wrap(err, "failed to Copy hidrive file to responseWriter").Error(), 500)
+		// 	return
+		// }
+
 	}
+
 }

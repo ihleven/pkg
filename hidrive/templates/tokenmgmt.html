@@ -1,0 +1,59 @@
+<html>
+    <head>
+	<link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+    </head>
+    <body>
+
+        TODO:
+        <p>Wenn eingeloggt, sollte der Key mit dem Benutzernamen des angelegten Users vorbelegt sein, bzw. es sollte direkt ein Redirect auf die Authorize-Seite erfolgen.</p>
+        <p>Ohne login sollte die Seite nicht aufgerufen werden können.</p>
+        <p>Ein Admin-User sollte auch für anderen Keys/Users Token verwalten können.</p>
+
+        <div class="container border mx-auto my-8">
+            <dl>
+                {{range $key, $token := .tokens}}
+                <dt class="text-gray-700 border-bottom">{{$key}}</dt>
+                <dd class="text-gray-400">{{$token}}</dd>
+                {{end}}
+            </dl>
+            <table>
+                {{range $key, $token := .tokens}}
+                <tr class="text-gray-700 border-bottom">
+                    <td>{{$key}}</td>
+                    <td class="text-gray-400">
+                        <a href="/hidrive/auth?refresh={{$key}}">refresh</a>
+                    </td>
+                </tr>
+                {{end}}
+            </table>
+        </div>
+
+        <div class="container border mx-auto my-8">
+            <h1 class="font-light text-gray-700 font-10">Authorize</h1>
+            <form method="get" action="/hidrive/auth/authorize">
+				<label class="text-gray-600 font-light">
+					Username:
+					<input type='text' name="state" placeholder="Key" class="w-full mt-2 mb-6 px-4 py-2 border rounded-lg text-gray-700 focus:outline-none focus:border-green-500" />
+				</label>
+				<input type="submit" value="submit" class="px-4 py-2 border rounded-lg text-gray-700 focus:outline-none focus:border-green-500" />
+			</form>
+        </div>
+
+
+        <div class="container border mx-auto my-8">
+            <h1 class="font-light text-gray-700 font-10">Token manuell mit Code erzeugen</h1>
+            <form method="get" action="/hidrive/auth/authcode">
+                <label class="text-gray-600 font-light">Username / Key:</label>
+                <input type='text' name="state" placeholder="Username" class="w-full mt-2 mb-6 px-4 py-2 border rounded-lg text-gray-700 focus:outline-none focus:border-green-500" />
+                <label class="text-gray-600 font-light">Auth code:</label>
+                <input type='text' name="code" placeholder="auth code" class="w-full mt-2 mb-6 px-4 py-2 border rounded-lg text-gray-700 focus:outline-none focus:border-green-500" />
+                <button type="submit" class="px-4 py-2 border rounded-lg text-gray-700 focus:outline-none focus:border-green-500" >Submit</button>
+            </form>
+        </div>
+
+		
+			
+
+           
+		</body>
+</html>

@@ -3,88 +3,111 @@ package hidrive
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
+	"net/http"
 	"regexp"
 	"strconv"
+
+	"github.com/ihleven/errors"
 )
 
-func NewHiDriveError(statusCode int, body io.Reader) *HiDriveError {
+type Status int
 
-	content, err := ioutil.ReadAll(body)
-	if err != nil {
-		fmt.Printf("error readall NewHidriveError => %v\n", err)
-	}
+const OK Status = 200
+const BadRequest Status = 400   // (e.g. invalid parameter)
+const Unauthorized Status = 401 // (no authentication)
+const Forbidden Status = 403    // (e.g. forbidden: acl)
+const NotFound Status = 404     // (e.g. file not existing)
+const InternalError Status = 500
+
+func NewHidriveError(response *http.Response) *HidriveError {
 
 	var e struct {
 		Code    interface{} `json:"code"`
 		Message string      `json:"msg"`
 	}
-	err = json.Unmarshal(content, &e)
+
+	err := json.NewDecoder(response.Body).Decode(&e)
 	if err != nil {
-		fmt.Printf("error unmarshal NewHidriveError => %v\n", err)
-
+		return &HidriveError{response.StatusCode, 0, err.Error()}
 	}
-	var hidriveError HiDriveError
-	// fmt.Printf("hidrive error: %t\n", e.Code)
 
-	switch te := e.Code.(type) {
+	hderr := HidriveError{Status: response.StatusCode, ErrorMsg: e.Message}
+
+	switch code := e.Code.(type) {
 	case int:
-		// fmt.Println("hidrive int error:", e, te)
-		hidriveError = HiDriveError{HTTPStatus: statusCode, ECode: te, EMessage: e.Message}
+		hderr.ErrorCode = code
 	case float64:
-		// fmt.Println("hidrive float64 error:", e, te)
-		hidriveError = HiDriveError{HTTPStatus: statusCode, ECode: int(te), EMessage: e.Message}
+		hderr.ErrorCode = int(code)
 	case string:
-		i, _ := strconv.Atoi(te)
-		// fmt.Println("hidrive strnerror:", e, i, e4)
-		hidriveError = HiDriveError{HTTPStatus: statusCode, ECode: i, EMessage: e.Message}
-	default:
-		hidriveError = HiDriveError{HTTPStatus: statusCode, ECode: 0, EMessage: e.Message}
+		hderr.ErrorCode, _ = strconv.Atoi(code)
 	}
+
 	var noRegularFile = regexp.MustCompile(`not a regular file`)
 
-	if statusCode == 403 && noRegularFile.MatchString(hidriveError.EMessage) {
-		return &HiDriveError{0, 666, "noRegularFile"}
+	if response.StatusCode == 403 && noRegularFile.MatchString(hderr.ErrorMsg) {
+		fmt.Printf("err %#v\n", hderr)
+		return &HidriveError{403, 666, "noRegularFile"}
 	}
-	return &hidriveError
+	return &hderr
 }
 
-type HiDriveError struct {
-	HTTPStatus int
-	// Status     string
-	ECode    int    `json:"code"`
-	EMessage string `json:"msg"`
+type HidriveError struct {
+	Status    int    `json:"status"`
+	ErrorCode int    `json:"code"`
+	ErrorMsg  string `json:"msg"`
 }
 
-func (e *HiDriveError) Error() string {
-	return fmt.Sprintf("%v, %s", e.ECode, e.EMessage)
+func (e *HidriveError) Error() string {
+	return fmt.Sprintf("%v, %s", e.ErrorCode, e.ErrorMsg)
 }
 
-func (e *HiDriveError) Code() int {
-	return e.ECode
+func (e *HidriveError) Code() int {
+	return e.ErrorCode
 }
-func (e *HiDriveError) HTTPStatusCode() int {
+func (e *HidriveError) HTTPStatusCode() int {
 	// i, _ := strconv.Atoi(e.Code)
-	return e.ECode
+	return e.ErrorCode
 }
 
-func NewAuthError(body io.Reader) (*HiDriveError, error) {
+// func NewAuthError(body io.Reader) (*HidriveError, error) {
 
-	type authError struct {
-		ErrorDescription string `json:"error_description"`
-		Error            string `json:"error"`
-	}
-	var authErr authError
-	err := json.NewDecoder(body).Decode(body)
+// 	type authError struct {
+// 		ErrorDescription string `json:"error_description"`
+// 		Error            string `json:"error"`
+// 	}
+// 	var authErr authError
+// 	err := json.NewDecoder(body).Decode(body)
+// 	if err != nil {
+
+// 	}
+// 	switch authErr.Error {
+// 	case "error":
+// 		return &HiDriveError{ECode: 401, EMessage: fmt.Sprintf("%s: %s", authErr.Error, authErr.ErrorDescription)}, nil
+// 	case "invalid_request":
+// 		return &HiDriveError{ECode: 400, EMessage: authErr.ErrorDescription}, nil
+// 	}
+// 	return nil, nil
+// }
+
+func NewOAuth2Error(response *http.Response) error {
+	e := OAuth2Error{Status: response.StatusCode}
+	err := json.NewDecoder(response.Body).Decode(&e)
 	if err != nil {
+		return errors.NewWithCode(errors.ErrorCode(response.StatusCode), err.Error())
+	}
+	return &e
+}
 
-	}
-	switch authErr.Error {
-	case "error":
-		return &HiDriveError{ECode: 401, EMessage: fmt.Sprintf("%s: %s", authErr.Error, authErr.ErrorDescription)}, nil
-	case "invalid_request":
-		return &HiDriveError{ECode: 400, EMessage: authErr.ErrorDescription}, nil
-	}
-	return nil, nil
+type OAuth2Error struct {
+	Status           int    `json:"-"`
+	ErrorMessage     string `json:"error"`
+	ErrorDescription string `json:"error_description"`
+}
+
+func (e *OAuth2Error) Error() string {
+	return fmt.Sprintf("Error (Status: %d) %s => %s", e.Status, e.ErrorMessage, e.ErrorDescription)
+}
+
+func (e *OAuth2Error) Code() int {
+	return e.Status
 }

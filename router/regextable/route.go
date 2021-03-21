@@ -6,15 +6,26 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/ihleven/errors"
 )
 
 func newRoute(method, pattern string, handler paramhandler) route {
-	return route{method, regexp.MustCompile("^" + pattern + "$"), nil, handler, nil}
+	return route{method, regexp.MustCompile("^" + pattern + "$"), nil, handler, nil, nil}
 }
 
 func NewRouter() *router {
 
-	return &router{notFoundHandler: http.NotFound}
+	return &router{notFoundHandler: http.NotFound, errorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+		code := errors.Code(err)
+		if code == 65535 {
+			code = 500
+		}
+		w.WriteHeader(code)
+		fmt.Fprintf(w, "%#v", err)
+		fmt.Printf("%#v\n", err)
+
+	}}
 }
 
 type router struct {
@@ -25,6 +36,7 @@ type router struct {
 
 type paramhandler func(http.ResponseWriter, *http.Request, map[string]interface{})
 type paramerrorhandler func(http.ResponseWriter, *http.Request, map[string]interface{}) error
+type ehandler func(http.ResponseWriter, *http.Request) error
 
 type route struct {
 	method       string
@@ -32,6 +44,27 @@ type route struct {
 	paramtypes   map[string]string
 	handler      paramhandler //func(http.ResponseWriter, *http.Request, map[string]string)
 	errorhandler paramerrorhandler
+	ehandler     ehandler
+}
+
+func (r *router) Get(pattern string, handler interface{}) {
+	r.Register(http.MethodGet, pattern, handler)
+}
+
+func (r *router) Post(pattern string, handler interface{}) {
+	r.Register(http.MethodPost, pattern, handler)
+}
+
+func (r *router) Put(pattern string, handler interface{}) {
+	r.Register(http.MethodPut, pattern, handler)
+}
+
+func (r *router) Patch(pattern string, handler interface{}) {
+	r.Register(http.MethodPatch, pattern, handler)
+}
+
+func (r *router) Delete(pattern string, handler interface{}) {
+	r.Register(http.MethodDelete, pattern, handler)
 }
 
 func (r *router) Register(method, pattern string, handler interface{}) {
@@ -61,12 +94,13 @@ func (r *router) Register(method, pattern string, handler interface{}) {
 	routeRE := regexp.MustCompile("^" + strings.Join(pathelems, "/") + "$")
 	switch ht := handler.(type) {
 	case func(http.ResponseWriter, *http.Request, map[string]interface{}) error:
+		r.routes = append(r.routes, route{method, routeRE, types, nil, ht, nil})
 
-		r.routes = append(r.routes, route{method, routeRE, types, nil, ht})
 	case func(http.ResponseWriter, *http.Request, map[string]interface{}):
+		r.routes = append(r.routes, route{method, routeRE, types, ht, nil, nil})
 
-		r.routes = append(r.routes, route{method, routeRE, types, ht, nil})
-
+	case func(http.ResponseWriter, *http.Request) error:
+		r.routes = append(r.routes, route{method, routeRE, types, nil, nil, ht})
 	}
 
 }
@@ -106,9 +140,15 @@ func (rou *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if route.handler != nil {
 				// ctx := context.WithValue(r.Context(), ctxKey{}, matches[1:])
 				route.handler(w, r, params) // .WithContext(ctx))
-			} else {
+			} else if route.errorhandler != nil {
 				err := route.errorhandler(w, r, params)
 				if err != nil {
+					rou.errorHandler(w, r, err)
+				}
+			} else {
+				err := route.ehandler(w, r)
+				if err != nil {
+					fmt.Println("err:", err)
 					rou.errorHandler(w, r, err)
 				}
 			}

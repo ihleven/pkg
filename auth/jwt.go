@@ -55,6 +55,13 @@ func GetClaims(r *http.Request) (Claims, int, error) {
 		return claims, http.StatusBadRequest, err
 	}
 
+	// tkn, err := jwt.Parse(cookie.Value, func(token *jwt.Token) (interface{}, error) {
+	// 	if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+	// 		return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+	// 	}
+	// 	return jwtKey, nil
+	// })
+
 	tkn, err := jwt.ParseWithClaims(cookie.Value, &claims, func(token *jwt.Token) (interface{}, error) { return jwtKey, nil })
 	if err != nil {
 		if err == jwt.ErrSignatureInvalid {
@@ -65,5 +72,17 @@ func GetClaims(r *http.Request) (Claims, int, error) {
 	if !tkn.Valid {
 		return claims, http.StatusUnauthorized, err
 	}
+
+	// if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+	// 	ctx := context.WithValue(r.Context(), "props", claims)
+	// 	// Access context values in handlers like this
+	// 	// props, _ := r.Context().Value("props").(jwt.MapClaims)
+	// 	next.ServeHTTP(w, r.WithContext(ctx))
+	// } else {
+	// 	fmt.Println(err)
+	// 	w.WriteHeader(http.StatusUnauthorized)
+	// 	w.Write([]byte("Unauthorized"))
+	// }
+
 	return claims, 0, nil
 }
