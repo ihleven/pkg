@@ -78,7 +78,7 @@ func (d *Drive) GetMeta(path string, authkey string) (interface{}, error) {
 	path = d.clean(path, token.Alias)
 	fmt.Println("path:", path)
 	var wg sync.WaitGroup
-	var dir *Dir
+	var dir *Meta
 	var direrr error
 
 	wg.Add(1)
@@ -92,13 +92,14 @@ func (d *Drive) GetMeta(path string, authkey string) (interface{}, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "")
 	}
-	fmt.Println("meta:", meta)
-	if meta.Base.Type == "dir" {
+	fmt.Println("meta:", meta.Filesize)
+	if meta.Filetype == "dir" {
 		wg.Wait()
 		if direrr != nil {
 			return nil, errors.Wrap(direrr, "")
 		}
-		return dir, nil
+		meta.Members = dir.Members
+		// return dir, nil
 	}
 
 	return &meta, nil
@@ -110,7 +111,7 @@ func (d *Drive) GetMeta(path string, authkey string) (interface{}, error) {
 	// }
 
 }
-func (d *Drive) GetDir(path string, authkey string) (*Dir, error) {
+func (d *Drive) GetDir(path string, authkey string) (*Meta, error) {
 
 	params := make(map[string][]string)
 
@@ -126,7 +127,7 @@ func (d *Drive) GetDir(path string, authkey string) (*Dir, error) {
 	}
 	defer body.Close()
 
-	var response Dir
+	var response Meta
 	err = json.NewDecoder(body).Decode(&response)
 	if err != nil {
 		return nil, err
@@ -229,7 +230,7 @@ func (d *Drive) CreateFile(path string, body io.Reader, name string, modtime str
 
 	// meta.Meta.Image = &Image{Height: meta.Image.Height, Width: meta.Image.Width, Exif: Exif{DateTimeOriginal: meta.Image.Exif["DateTimeOriginal"].(string)}}
 
-	meta := Meta{Base{r.ID, r.Name, r.Path, r.Type, r.CTime, r.MTime, r.HasDirs, r.Readable, r.Writable}, r.MIMEType, r.Size, 0, "", nil}
+	meta := Meta{r.ID, r.Name, r.Path, r.Type, r.CTime, r.MTime, r.HasDirs, r.Readable, r.Writable, r.Size, r.MIMEType, 0, "", nil, nil}
 	if r.Image != nil {
 		meta.Image = &Image{Height: r.Image.Height, Width: r.Image.Width}
 	}

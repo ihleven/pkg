@@ -42,54 +42,55 @@ var memberfields = "members,members.ctime,members.has_dirs,members.id,members.im
 // 	Writable bool      //    - bool      - write-permission for the directory
 // }
 
-type Base struct {
-	ID       string //    - string    - path id of the directory
-	Name     string //    - string    - URL-encoded name of the directory
-	Path     string //    - string    - URL-encoded path to the directory
-	Type     string //    - string    - "dir"
-	Ctime    int64  //    - timestamp - ctime of the directory
-	Mtime    int64  // time.Time //    - timestamp - mtime of the directory
-	HasDirs  bool   //    - bool      - does the directory contain subdirs?
-	Readable bool   //    - bool      - read-permission for the directory
-	Writable bool   //    - bool      - write-permission for the directory
-}
+// type Base struct {
+// 	ID       string //    - string    - path id of the directory
+// 	Name     string //    - string    - URL-encoded name of the directory
+// 	Path     string //    - string    - URL-encoded path to the directory
+// 	Type     string //    - string    - "dir"
+// 	Ctime    int64  //    - timestamp - ctime of the directory
+// 	Mtime    int64  // time.Time //    - timestamp - mtime of the directory
+// 	HasDirs  bool   //    - bool      - does the directory contain subdirs?
+// 	Readable bool   //    - bool      - read-permission for the directory
+// 	Writable bool   //    - bool      - write-permission for the directory
+// }
 
 type Meta struct {
-	Base
-	// ID       string `json:"id"`
-	// Name     string `json:"name"`
-	// Path     string `json:"path"`
-	// Type     string `json:"type"`
-	// CTime    int64  `json:"ctime"`
-	// MTime    int64  `json:"mtime"`
-	// HasDirs  bool   `json:"has_dirs"`
-	// Readable bool   `json:"readable"`
-	// Writable bool   `json:"writable"`
+	ID             string `json:"id"`       //    - string    - path id of the directory
+	NameURLEncoded string `json:"name"`     //    - string    - URL-encoded name of the directory
+	Path           string `json:"path"`     //    - string    - URL-encoded path to the directory
+	Filetype       string `json:"type"`     //    - string    - e.g. "dir"
+	CTime          int64  `json:"ctime"`    //    - timestamp - ctime of the directory
+	MTime          int64  `json:"mtime"`    //    - timestamp - mtime of the directory
+	HasDirs        bool   `json:"has_dirs"` //    - bool      - does the directory contain subdirs?
+	Readable       bool   `json:"readable"` //    - bool      - read-permission for the directory
+	Writable       bool   `json:"writable"` //    - bool      - write-permission for the directory
 	// default: ctime,has_dirs,mtime,readable,size,type,writable
 
-	MIMEType string `json:"mime_type"`
 	Filesize uint64 `json:"size"`
+	MIMEType string `json:"mime_type"`
 	Nmembers int    `json:"nmembers"`
 	ParentID string `json:"parent_id"`
 	// Chash    string      `json:"chash"`
 	// Mhash    string      `json:"mhash"`
 	// MOhash   string      `json:"mohash"`
 	// Nhash    string      `json:"nhash"`
-	Image *Image `json:"image"`
-}
-type Dir struct {
-	Meta
+	Image   *Image `json:"image"`
 	Members []Meta `json:"members"`
 }
 
+// type Dir struct {
+// 	Meta
+// 	Members []Meta `json:"members"`
+// }
+
 // Name is part of fs.FileInfo and fs.DirEntry interface
 func (m *Meta) Name() string { // base name of the file
-	return m.Base.Name
+	return m.NameURLEncoded
 }
 
 // IsDir is part of fs.FileInfo and fs.DirEntry interface
 func (m *Meta) IsDir() bool { // abbreviation for Mode().IsDir()
-	return m.Base.Type == "dir"
+	return m.Filetype == "dir"
 }
 
 // Type is part of fs.DirEntry interface
@@ -116,12 +117,12 @@ func (m *Meta) Mode() fs.FileMode { // file mode bits
 
 // ModTime is part of fs.FileInfo interface
 func (m *Meta) ModTime() time.Time {
-	return time.Unix(0, m.Base.Mtime)
+	return time.Unix(0, m.MTime)
 }
 
 // Sys is part of fs.FileInfo interface
 func (m *Meta) Sys() interface{} {
-	return m.Base
+	return m
 }
 
 // type FileDirSymlinkMeta struct {

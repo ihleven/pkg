@@ -157,7 +157,7 @@ func (c *HiDriveClient) GetMeta(path, pid, fields string, token string) (*Meta, 
 	return &meta, nil
 }
 
-func (c *HiDriveClient) GetDir(path, pid, members string, offset, limit int, fields, sort string, token string) (*Dir, error) {
+func (c *HiDriveClient) GetDir(path, pid, members string, offset, limit int, fields, sort string, token string) (*Meta, error) {
 
 	params := map[string][]string{"path": {path}, "members": {"all"}}
 	if members != "" {
@@ -177,7 +177,7 @@ func (c *HiDriveClient) GetDir(path, pid, members string, offset, limit int, fie
 	}
 	defer body.Close()
 
-	var response Dir
+	var response Meta
 	err = json.NewDecoder(body).Decode(&response)
 	if err != nil {
 		return nil, err
@@ -186,7 +186,7 @@ func (c *HiDriveClient) GetDir(path, pid, members string, offset, limit int, fie
 	return &response, nil
 }
 
-func (c *HiDriveClient) PostDir(path, pid, on_exist string, mtime, parent_mtime int, token string) (*Base, error) {
+func (c *HiDriveClient) PostDir(path, pid, on_exist string, mtime, parent_mtime int, token string) (*Meta, error) {
 
 	params := url.Values{
 		"path":     {path},
@@ -199,7 +199,7 @@ func (c *HiDriveClient) PostDir(path, pid, on_exist string, mtime, parent_mtime 
 	}
 	defer body.Close()
 
-	var response Base
+	var response Meta
 	err = json.NewDecoder(body).Decode(&response)
 	if err != nil {
 		return nil, errors.Wrap(err, "Error decoding hidrive create dir response")
