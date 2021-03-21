@@ -135,7 +135,7 @@ func (c *HiDriveClient) GetThumb(path, pid string, token string) (io.ReadCloser,
 	return body, nil
 }
 
-func (c *HiDriveClient) GetMeta(path, pid, fields string, token string) (*FileDirSymlinkMeta, error) {
+func (c *HiDriveClient) GetMeta(path, pid, fields string, token string) (*Meta, error) {
 
 	params := url.Values{
 		"path":   {path},
@@ -148,7 +148,7 @@ func (c *HiDriveClient) GetMeta(path, pid, fields string, token string) (*FileDi
 	}
 	defer body.Close()
 
-	var meta FileDirSymlinkMeta
+	var meta Meta
 	err = json.NewDecoder(body).Decode(&meta)
 	if err != nil {
 		return nil, errors.Wrap(err, "Couldn't decode response body")

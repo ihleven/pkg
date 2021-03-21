@@ -65,7 +65,7 @@ func (fs *FS) ReadFile(name string) ([]byte, error) {
 }
 
 type File struct {
-	meta   *FileDirSymlinkMeta
+	meta   *Meta
 	fsys   *FS
 	reader *bytes.Reader
 }
