@@ -147,7 +147,6 @@ func Welcome(w http.ResponseWriter, r *http.Request) {
 
 func SignoutHandler(w http.ResponseWriter, r *http.Request) {
 
-	fmt.Println("logout")
 	c := &http.Cookie{
 		Name:     "token",
 		Value:    "",

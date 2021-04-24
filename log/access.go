@@ -2,8 +2,12 @@
 package log
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -35,4 +39,44 @@ func Done(counter int64, rtype string) {
 	// if err != nil {
 	// 	log.Fatal(err)
 	// }
+}
+
+var timeFormat = "02/Jan/2006:15:04:05 -0700"
+
+type AccessLogger struct {
+	Format string
+}
+
+func (l AccessLogger) Access(reqNum uint64, reqID string, start time.Time, remoteAddr, username, method, uri, proto string, status, size int, duration time.Duration, referer, agent string) {
+	// username := "-"
+
+	// if req.URL.User != nil {
+	// 	if name := req.URL.User.Username(); name != "" {
+	// 		username = name
+	// 	}
+	// }
+
+	switch l.Format {
+	case "CombineLoggerType":
+		fmt.Fprintln(os.Stdout, strings.Join([]string{
+			" === access logger === ",
+			remoteAddr,
+			"-",
+			reqID, //strconv.Itoa(int(reqNum)),
+			"[" + start.Format(timeFormat) + "]",
+			`"` + method,
+			uri,
+			proto + `"`,
+			strconv.Itoa(status),
+			strconv.Itoa(size),
+			duration.String(),
+			`"` + referer + `"`,
+			`"` + agent + `"`,
+		}, " "))
+
+	}
+}
+
+func parseResponseTime(start time.Time) string {
+	return fmt.Sprintf("%.3f ms", time.Now().Sub(start).Seconds()/1e6)
 }
