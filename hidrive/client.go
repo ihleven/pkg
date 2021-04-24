@@ -159,6 +159,7 @@ func (c *HiDriveClient) GetMeta(path, pid, fields string, token string) (*Meta, 
 
 func (c *HiDriveClient) GetDir(path, pid, members string, offset, limit int, fields, sort string, token string) (*Meta, error) {
 
+	// var params map[string][]string
 	params := map[string][]string{"path": {path}, "members": {"all"}}
 	if members != "" {
 		params["members"] = []string{members}

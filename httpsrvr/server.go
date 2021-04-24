@@ -20,6 +20,8 @@ var listenAndServeSystemD func(*http.Server) error
 
 func NewServer(port int, debug bool) *httpServer {
 
+	start := time.Now()
+
 	loglevel := log.INFO
 	if debug {
 		loglevel = log.DEBUG
@@ -27,11 +29,13 @@ func NewServer(port int, debug bool) *httpServer {
 	host := ""
 	return &httpServer{
 		addr:   fmt.Sprintf("%s:%d", host, port),
-		routes: NewDispatcher(nil),
+		routes: NewDispatcher(nil, "root"),
 		// systemd:   systemd,
 		debug:     debug,
 		log:       log.NewStdoutLogger(loglevel),
-		timestamp: time.Now().Format("20060102150405"),
+		logger:    log.AccessLogger{"CombineLoggerType"}, // log.NewStdoutLogger(loglevel),
+		startedAt: start,
+		instance:  start.Format("20060102T150405"),
 	}
 }
 
@@ -39,12 +43,14 @@ type httpServer struct {
 	server    *http.Server
 	routes    *dispatcher
 	log       logger
+	logger    accesslogger
 	addr      string
 	debug     bool
 	systemd   bool
 	limiter   *rate.Limiter
+	instance  string
 	counter   uint64
-	timestamp string
+	startedAt time.Time
 }
 
 // NewLimiter returns a new Limiter that allows events up to rate r and permits bursts of at most b tokens.
@@ -72,11 +78,12 @@ func (s *httpServer) ListenAndServe(host string, port int) {
 	s.addr = fmt.Sprintf("%s:%d", host, port)
 	s.Run()
 }
+
 func (s *httpServer) Run() {
 
 	s.server = &http.Server{
 		Addr:           s.addr,
-		Handler:        limit(s, s.limiter), // limit(s.dispatcher, s.limiter),
+		Handler:        limit(s, s.limiter),
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		IdleTimeout:    15 * time.Second, // TODO: was ist das?
@@ -114,6 +121,7 @@ func (s *httpServer) shutdownWaiter(waitForGracefulShutdownComplete chan<- bool)
 	// SIGTERM ist das Default-Termination-Signal von Systemd
 	signal.Notify(quit, os.Interrupt, os.Kill, syscall.SIGTERM)
 
+	// Warten auf SIGTERM
 	<-quit
 
 	s.log.Info(" +++ Server is shutting down... waiting up to 30 secs")
@@ -153,25 +161,45 @@ func (s *httpServer) Register(path string, handler interface{}) *dispatcher {
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	requestCount := atomic.AddUint64(&s.counter, 1)
-	requestID := r.Header.Get("X-Request-ID")
-	if requestID == "" {
-		requestID = fmt.Sprintf("%s-%d", s.timestamp, requestCount)
+	start := time.Now()
+	reqnum := atomic.AddUint64(&s.counter, 1)
+	reqid := r.Header.Get("X-Request-ID")
+	if reqid == "" {
+		reqid = fmt.Sprintf("%s-%d", s.instance, reqnum)
 	}
+
 	rw := NewResponseWriter(w)
 
-	defer func(start time.Time, requestCount uint64, requestID string) {
-
-		color.Green("request %d: %s %s => %d (%d bytes, %v)\n", requestCount, requestID, r.URL.Path, rw.statusCode, rw.Count(), time.Since(start))
-	}(time.Now(), requestCount, requestID)
-
-	ctx := context.WithValue(r.Context(), "reqid", requestID)
-	ctx = context.WithValue(ctx, "counter", requestCount)
+	ctx := context.WithValue(r.Context(), "reqid", reqid)
+	ctx = context.WithValue(ctx, "counter", reqnum)
 	ctx = context.WithValue(ctx, "debug", s.debug)
 
-	r2 := r.WithContext(ctx)
+	r = r.WithContext(ctx)
 
-	s.routes.ServeHTTP(rw, r2)
+	dispatcher, tail := s.Dispatch(r.URL.Path)
+	if !dispatcher.preserve {
+		r.URL.Path = tail
+	}
 
-	// color.Green("request %d: %s %s => %d %v\n", requestCount, requestID, r.URL.Path, rw.statusCode, time.Since(start))
+	defer func(start time.Time, reqnum uint64, reqid string, name string) {
+		err := recover()
+		if err != nil {
+			color.Red(" error request %d: %s %s => %d (%d bytes, %v)\n", reqnum, reqid, r.URL.Path, rw.statusCode, rw.Count(), time.Since(start))
+		}
+
+		s.logger.Access(reqnum, reqid, start, r.RemoteAddr, "user", r.Method, r.URL.Path, r.Proto, rw.statusCode, int(rw.Count()), time.Since(start), r.Referer(), name)
+		color.Green("request %d: %s %s => %d (%d bytes, %v)\n", reqnum, reqid, r.URL.Path, rw.statusCode, rw.Count(), time.Since(start))
+	}(start, reqnum, reqid, dispatcher.name)
+
+	dispatcher.handler.ServeHTTP(rw, r)
+}
+
+func (s *httpServer) Dispatch(route string) (*dispatcher, string) {
+
+	head, tail := shiftPath(route)
+
+	if disp, ok := s.routes.children[head]; ok {
+		return disp.GetDispatcher(tail)
+	}
+	return s.routes, route
 }

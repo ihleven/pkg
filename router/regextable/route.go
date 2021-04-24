@@ -16,16 +16,21 @@ func newRoute(method, pattern string, handler paramhandler) route {
 
 func NewRouter() *router {
 
-	return &router{notFoundHandler: http.NotFound, errorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+	errorhandler := func(w http.ResponseWriter, r *http.Request, err error) {
 		code := errors.Code(err)
 		if code == 65535 {
 			code = 500
 		}
 		w.WriteHeader(code)
-		fmt.Fprintf(w, "%#v", err)
-		fmt.Printf("%#v\n", err)
+		fmt.Fprintf(w, " -> %#v", err)
+		fmt.Printf(" -> %#v\n", err)
 
-	}}
+	}
+
+	return &router{
+		notFoundHandler: http.NotFound,
+		errorHandler:    errorhandler,
+	}
 }
 
 type router struct {
@@ -111,7 +116,7 @@ func (rou *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	for _, route := range rou.routes {
 		matches := route.regex.FindStringSubmatch(r.URL.Path)
-		fmt.Println("matches:", matches)
+
 		if len(matches) > 0 {
 
 			if !strings.Contains(route.method, r.Method) { // r.Method != route.method {

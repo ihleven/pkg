@@ -1,20 +1,20 @@
 package httpsrvr
 
 import (
-	"fmt"
 	"net/http"
 	"path"
 	"strings"
 )
 
-func NewDispatcher(handler http.Handler) *dispatcher {
+func NewDispatcher(handler http.Handler, name string) *dispatcher {
 	if handler == nil {
 		handler = http.NotFoundHandler()
 	}
-	return &dispatcher{children: make(map[string]*dispatcher), handler: handler}
+	return &dispatcher{name: name, handler: handler, children: make(map[string]*dispatcher)}
 }
 
 type dispatcher struct {
+	name     string
 	handler  http.Handler
 	children map[string]*dispatcher
 	preserve bool
@@ -23,6 +23,12 @@ type dispatcher struct {
 func (r *dispatcher) PreservePath(preserve bool) *dispatcher {
 
 	r.preserve = preserve
+	return r
+}
+
+func (r *dispatcher) Name(name string) *dispatcher {
+
+	r.name = name
 	return r
 }
 
@@ -37,34 +43,29 @@ func (r *dispatcher) Register(path string, handler http.Handler) *dispatcher {
 		return r
 	case tail == "/":
 		// child route
-		r.children[head] = NewDispatcher(handler) // {children: make(map[string]*dispatcher), handler: handler}
+		r.children[head] = NewDispatcher(handler, path[1:]) // {children: make(map[string]*dispatcher), handler: handler}
 		return r.children[head]
 
 	default:
 		// nested child route
 		if _, ok := r.children[head]; !ok {
-			r.children[head] = NewDispatcher(r.handler) // &dispatcher{children: make(map[string]*dispatcher), handler: r.handler}
+			r.children[head] = NewDispatcher(r.handler, path) // r.handler -> notfound handler
 		}
 		return r.children[head].Register(tail, handler)
 	}
 }
 
 func (d *dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	disp, tail := d.getDispatcher(r.URL.Path)
-	if !disp.preserve {
-		fmt.Println("preserve:", disp)
-		r.URL.Path = tail
-	}
-	disp.handler.ServeHTTP(w, r)
+	d.handler.ServeHTTP(w, r)
 }
-func (d *dispatcher) getDispatcher(route string) (*dispatcher, string) {
+
+func (d *dispatcher) GetDispatcher(route string) (*dispatcher, string) {
+
 	head, tail := shiftPath(route)
-	// fmt.Printf("GetHandler => %q - %q     %v\n", head, tail, d)
+
 	if disp, ok := d.children[head]; ok {
-		return disp.getDispatcher(tail)
+		return disp.GetDispatcher(tail)
 	}
-	// fmt.Printf("GetHandler => %v\n", d)
 	return d, route
 }
 
