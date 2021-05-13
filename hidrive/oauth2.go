@@ -24,12 +24,20 @@ func NewOAuth2Client(clientID, clientSecret string) *OAuth2Client {
 	return &OAuth2Client
 }
 
+// OAuth2Client is responsible for cummunicating with the hidrive oauth2 endpoints:
+// GET /client/authorize
+// POST /oauth2/token
+// POST /oauth2/tokeninfo
+// POST /oauth2/revoke
 type OAuth2Client struct {
 	http.Client
 	baseURL                string
 	clientID, clientSecret string
 }
 
+// OAuth2Token is the payload of a hidrive token returned by POST /oauth2/token request
+// AccessToken is used for api requests
+// RefreshToken is used to renew abgelaufene tokens
 type OAuth2Token struct {
 	TokenType    string `json:"token_type,omitempty"`
 	AccessToken  string `json:"access_token"`
@@ -40,6 +48,8 @@ type OAuth2Token struct {
 	Scope        string `json:"scope"`
 }
 
+// GenerateToken allows you to retrieve a new refresh_token following initial “code” flow authorization.
+// wraps hidrive POST /oauth2/token request.
 func (c *OAuth2Client) GenerateToken(code string) (*OAuth2Token, error) {
 
 	params := url.Values{
@@ -67,6 +77,7 @@ func (c *OAuth2Client) GenerateToken(code string) (*OAuth2Token, error) {
 	return &token, nil
 }
 
+// RefreshToken may be used to generate a valid access_token anytime, using an existing and valid refresh_token.
 func (c *OAuth2Client) RefreshToken(refreshtoken string) (*OAuth2Token, error) {
 
 	params := url.Values{
@@ -95,6 +106,10 @@ func (c *OAuth2Client) RefreshToken(refreshtoken string) (*OAuth2Token, error) {
 	return &token, nil
 }
 
+// RevokeToken lets you revoke an active access_token or refresh_token.
+// Revoking a refresh_token will also invalidate all related access_token.
+// Revoking the refresh_token is the easiest way to accomplish a logout mechanism for your app.
+// This is a functionality we explicitly encourage you to implement.
 func (c *OAuth2Client) RevokeToken(token string) error {
 
 	params := url.Values{
@@ -123,6 +138,8 @@ type OAuth2TokenInfo struct {
 	Scope     string `json:"scope"`
 }
 
+// TokenInfo calls an endpoint you may use to get information about your current access_token.
+// The response will include the granted scope, expiry time, user alias and your client_id.
 func (c *OAuth2Client) TokenInfo(accessToken string) (*OAuth2TokenInfo, error) {
 
 	params := url.Values{

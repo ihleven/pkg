@@ -20,9 +20,9 @@ type dispatcher struct {
 	preserve bool
 }
 
-func (r *dispatcher) PreservePath(preserve bool) *dispatcher {
+func (r *dispatcher) PreservePath() *dispatcher {
 
-	r.preserve = preserve
+	r.preserve = true
 	return r
 }
 

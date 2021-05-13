@@ -14,6 +14,8 @@ import (
 	"github.com/ihleven/errors"
 )
 
+// file in auth.go umbenennen
+
 type Auth struct {
 	UserID        string           `json:"userid"`
 	Alias         string           `json:"alias"`
@@ -34,8 +36,13 @@ func NewAuthManager(id, secret string) *AuthManager {
 			Timeout: 10 * time.Second,
 		},
 		// tokenFile: "hidrive.tokens",
-		authmap:     readAuthMapFromFile(), // make(map[string]*Auth),
+		// authmap:     readAuthMapFromFile(), // make(map[string]*Auth),
 		oauthClient: NewOAuth2Client(id, secret),
+	}
+	var err error
+	mgmt.authmap, err = readAuthMapFromFile()
+	if err != nil {
+		panic(fmt.Sprintf("%+v", err))
 	}
 
 	// authmap := mgmt.
@@ -45,6 +52,9 @@ func NewAuthManager(id, secret string) *AuthManager {
 	return &mgmt
 }
 
+// AuthManager verwaltet auth-Daten für angemeldete user.
+// Annahme: user-Anmeldungen werden außerhalb validiert. Übergebene authkeys sind authorisiert.
+// Zur Kommunikation mit der HiDrive-APi wird ein OAuth2Client verwendet
 type AuthManager struct {
 	sync.Mutex
 	authmap      map[string]*Auth `json:"-"`
@@ -54,6 +64,34 @@ type AuthManager struct {
 	clientSecret string           `json:"-"`
 	// tokenFile    string             `json:"-"`
 	// deadlines map[string]time.Time `json:"-"`
+}
+
+func (m *AuthManager) GetClientAuthorizeURL(state, next string) string {
+
+	redirectURI := "http://localhost:8000/hidrive/auth/authcode"
+	if next != "" {
+		redirectURI += "?next=" + next
+	}
+
+	params := url.Values{
+		"client_id":     {m.clientID},
+		"response_type": {"code"},
+		"scope":         {"user,rw"},
+		"lang":          {"de"},  // optional: language in which the authorization page is shown
+		"state":         {state}, // optional:
+		"redirect_uri":  {redirectURI},
+	}
+
+	return "https://my.hidrive.com/client/authorize?" + params.Encode()
+}
+
+func (m *AuthManager) GetAuthTokenAlt(key string) (*AuthToken, error) {
+	m.Lock()
+	defer m.Unlock()
+	if auth, ok := m.authmap[key]; ok {
+		return &AuthToken{auth.Token.AccessToken, auth.Alias}, nil
+	}
+	return nil, errors.NewWithCode(401, "no token")
 }
 
 func (m *AuthManager) GetAccessToken(key string) (string, error) {
@@ -67,8 +105,10 @@ func (m *AuthManager) GetAccessToken(key string) (string, error) {
 }
 
 func (m *AuthManager) Refresh(key string) (string, error) {
+
 	m.Lock()
 	defer m.Unlock()
+
 	auth, ok := m.authmap[key]
 	if !ok || auth == nil {
 		return "", errors.NewWithCode(401, "Unknown auth key")
@@ -77,32 +117,50 @@ func (m *AuthManager) Refresh(key string) (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "Error refresh")
 	}
-	fmt.Println("old:", auth.Token.AccessToken, auth.Token.RefreshToken, err)
-	fmt.Println("new:", new.AccessToken, new.RefreshToken, err)
+	fmt.Printf(" -> refreshing token %s => %s\n", auth.Token.AccessToken, new.AccessToken)
+	// fmt.Println("new:", new.AccessToken, new.RefreshToken, err)
 
 	auth.Token = new
+	auth.ExpiresAt = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
+	m.authmap[key] = auth
 	m.writeTokenFile()
 
 	return auth.Token.AccessToken, nil
 }
 
-func (m *AuthManager) GetAuth(key string) *Auth {
-	m.Lock()
-	defer m.Unlock()
-	return m.authmap[key]
-}
+// func (m *AuthManager) GetAuth(key string) *Auth {
+// 	m.Lock()
+// 	defer m.Unlock()
+// 	return m.authmap[key]
+// }
 
 type AuthToken struct {
 	AccessToken string
 	Alias       string
 }
 
-func (m *AuthManager) GetAuthToken(key string) (*AuthToken, error) {
+func (m *AuthManager) GetAuthToken(key string) (*AuthToken, error) { //<-chan string {
 	m.Lock()
 	defer m.Unlock()
 	if auth, ok := m.authmap[key]; ok {
+
+		remaining := auth.ExpiresAt.Sub(time.Now()).Minutes()
+		if remaining < 1 {
+			fmt.Println("refreshing access token!!!")
+			// access, err := m.Refresh(key)
+			new, err := m.oauthClient.RefreshToken(auth.Token.RefreshToken)
+			if err != nil {
+				return nil, errors.NewWithCode(401, "no token")
+			}
+			auth.Token = new
+			auth.ExpiresAt = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
+			m.authmap[key] = auth
+			m.writeTokenFile()
+		}
+
 		return &AuthToken{auth.Token.AccessToken, auth.Alias}, nil
 	}
+
 	return nil, errors.NewWithCode(401, "no token")
 }
 
@@ -128,21 +186,24 @@ func (m *AuthManager) AddAuth(key, code string) (*Auth, error) {
 	return &auth, nil
 }
 
-func readAuthMapFromFile() map[string]*Auth {
+func readAuthMapFromFile() (map[string]*Auth, error) {
+
+	authmap := make(map[string]*Auth)
+
 	bytes, err := os.ReadFile("hidrive.mgmt")
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			return authmap, nil //errors.Wrap(err, "")
 		}
-		return nil // errors.Wrap(err, "failed to read token file")
+		return nil, errors.Wrap(err, "failed to read token file")
 	}
-	authmap := make(map[string]*Auth)
+
 	if err := json.Unmarshal(bytes, &authmap); err != nil {
-		return nil // errors.Wrap(err, "error parsing token")
+		return nil, errors.Wrap(err, "error parsing token")
 	}
 	fmt.Printf("readTokenFile() => %v\n", authmap)
 
-	return authmap
+	return authmap, nil
 }
 
 func (m *AuthManager) writeTokenFile() error {
@@ -172,16 +233,9 @@ func (m *AuthManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 
 	case "/authorize":
+		clientAuthURL := m.GetClientAuthorizeURL(r.URL.Query().Get("state"), r.URL.Query().Get("next"))
 
-		params := url.Values{
-			"client_id":     {m.clientID},
-			"response_type": {"code"},
-			"scope":         {"user,rw"},
-			"lang":          {"de"},                       // optional: language in which the authorization page is shown
-			"state":         {r.URL.Query().Get("state")}, // optional:
-			"redirect_uri":  {"http://localhost:8000/hidrive/auth/authcode?next=" + r.URL.Query().Get("next")},
-		}
-		http.Redirect(w, r, "https://my.hidrive.com/client/authorize?"+params.Encode(), 302)
+		http.Redirect(w, r, clientAuthURL, 302)
 
 	case "/authcode":
 		// HandleAuthorizeCallback verarbeitet die Weiterleitung nach erfolgtem authorize
@@ -189,9 +243,10 @@ func (m *AuthManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		key := r.URL.Query().Get("state")
 		if code, ok := r.URL.Query()["code"]; ok {
-
+			fmt.Println("code", code, ok)
 			_, err := m.AddAuth(key, code[0])
 			if err != nil {
+				fmt.Printf("error => %+v\n", err)
 				fmt.Fprintf(w, "error => %+v\n", err)
 			}
 			// p.writeTokenFile()
@@ -200,6 +255,7 @@ func (m *AuthManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if next == "" {
 				next = "/hidrive/auth"
 			}
+			fmt.Println("code", code, ok, next)
 			fmt.Fprintf(w, `<head><meta http-equiv="Refresh" content="0; URL=%s"></head>`, next)
 		}
 

@@ -16,6 +16,9 @@ kunst:
 generate:
 	go generate
 
+hidrive:
+	go build  -o hdrv -ldflags="-X main.version=${VERSION} -X main.ClientID=${CLIENT_ID} -X main.ClientSecret=${CLIENT_SECRET}" ./cmd/hidrive
+
 build: 
 	go build -v -o ${OUT} -ldflags="-X main.version=${VERSION} -X main.ClientID=${CLIENT_ID} -X main.ClientSecret=${CLIENT_SECRET}" 
 
@@ -45,4 +48,4 @@ opal:
 	GOOS=linux GOARCH=amd64 go build -v -o ${OUT} -ldflags="-X main.version=${VERSION} -X main.ClientID=${CLIENT_ID} -X main.ClientSecret=${CLIENT_SECRET}" 
 	scp ./icloud ihle@opal6.opalstack.com:~/bin/icloud
 
-.PHONY: run server static vet lint
+.PHONY: run server static vet lint hidrive

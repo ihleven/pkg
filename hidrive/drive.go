@@ -14,22 +14,30 @@ import (
 )
 
 // NewDrive creates a new hidrive
-func NewDrive(prefix string, tokenmngr *AuthManager) *Drive {
+func NewDrive(clientID, clientSecret string, opts ...DriveOption) *Drive {
 
-	var Drive = Drive{
+	var d = &Drive{
 		client:  NewClient(),
-		manager: tokenmngr,
-		prefix:  prefix,
+		manager: NewAuthManager(clientID, clientSecret),
+		// prefix:  "",
 		// homes:    map[string]string{"matt": "/users/matt.ihle"},
 		confmap: make(map[string]config),
 	}
-	return &Drive
+
+	// Loop through each option
+	for _, opt := range opts {
+		opt(d)
+	}
+
+	return d
 }
 
+// Drive ist ein Wrapper um Client, der Pfadumrechnungen und
 type Drive struct {
 	client  *HiDriveClient
 	manager *AuthManager // Auth     *OAuth2Prov
 	prefix  string
+	useHome bool
 	// homes    map[string]string
 	confmap map[string]config
 }
@@ -40,12 +48,28 @@ type config struct {
 	ACL      []string
 }
 
+type DriveOption func(*Drive)
+
+func Prefix(prefix string) DriveOption {
+	return func(d *Drive) {
+		d.prefix = prefix
+	}
+}
+
+func FromHome() DriveOption {
+	return func(d *Drive) {
+		d.useHome = true
+	}
+}
+
 func (d *Drive) clean(inpath string, username string) string {
 
 	outpath := path.Clean(inpath)
 
 	if d.prefix != "" {
 		outpath = path.Join(d.prefix, outpath)
+	} else if d.useHome {
+		outpath = path.Join("/users", username, outpath)
 	} else if username != "" {
 		if strings.HasPrefix(outpath, "/home") {
 			outpath = strings.Replace(outpath, "/home", "/users/"+username, 1)
@@ -69,7 +93,7 @@ func (d *Drive) clean(inpath string, username string) string {
 // 	return token
 // }
 func (d *Drive) GetMeta(path string, authkey string) (interface{}, error) {
-	fmt.Println("GetMeta:", path, authkey)
+
 	token, err := d.manager.GetAuthToken(authkey)
 	if token == nil {
 		return nil, errors.NewWithCode(401, "no valid token")

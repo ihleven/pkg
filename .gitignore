@@ -17,7 +17,10 @@
 hidrive.config
 hidrive.token
 hidrive.tokens
+hidrive.mgmt
 pkg
 pkg-linux
 icloud
 cmd/cmd
+
+cmd/hidrive/hidrive

@@ -26,8 +26,8 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	claims, _, err := auth.GetClaims(r)
-
 	token, err := d.manager.GetAuthToken(claims.Username)
+
 	if token == nil || err != nil {
 		http.Error(w, errors.NewWithCode(401, "Couldn‘t get valid auth token for authuser %q", claims.Username).Error(), 401)
 		return
@@ -99,7 +99,7 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "thumbs":
 		params := r.URL.Query()
 		if len(tail) > 1 {
-			params["path"] = []string{tail}
+			params["path"] = []string{d.clean(tail, token.Alias)}
 		}
 		body, err := d.client.Request("GET", "/file/thumbnail", params, nil, token.AccessToken) //url.Values{"pid": {tail[1:]}})
 		if err != nil {
