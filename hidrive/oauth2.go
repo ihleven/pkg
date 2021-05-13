@@ -39,8 +39,12 @@ type OAuth2Client struct {
 // AccessToken is used for api requests
 // RefreshToken is used to renew abgelaufene tokens
 type OAuth2Token struct {
-	TokenType    string `json:"token_type,omitempty"`
-	AccessToken  string `json:"access_token"`
+	// TokenType is the type of token.
+	// The Type method returns either this or "Bearer", the default.
+	TokenType string `json:"token_type,omitempty"`
+	// AccessToken is the token that authorizes and authenticates the requests.
+	AccessToken string `json:"access_token"`
+	// RefreshToken is a token that's used by the application (as opposed to the user) to refresh the access token if it expires.
 	RefreshToken string `json:"refresh_token,omitempty"`
 	ExpiresIn    int    `json:"expires_in"`
 	UserID       string `json:"userid"`

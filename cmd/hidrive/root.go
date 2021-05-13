@@ -6,6 +6,7 @@ import (
 
 	"github.com/ihleven/pkg/auth"
 	"github.com/ihleven/pkg/hidrive"
+	"github.com/ihleven/pkg/hidrive/hdhandler"
 	"github.com/ihleven/pkg/httpsrvr"
 	"github.com/spf13/cobra"
 )
@@ -45,6 +46,7 @@ func run(cmd *cobra.Command, args []string) error {
 	srvr := httpsrvr.NewServer(8000, true)
 
 	srvr.Register("/hidrive", wi)
+	srvr.Register("/hidrive/auth", hdhandler.AuthHandler(wi.AM()))
 	srvr.Register("/home", hidrive.NewDrive(clientID, clientSecret, hidrive.FromHome()))
 	// srvr.Register("/hidrive/auth", authMngr)
 	srvr.Register("/login", authentication.LoginHandler).PreservePath()

@@ -2,6 +2,7 @@ package hidrive
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"path"
@@ -111,6 +112,11 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, errors.Wrap(err, "failed to Copy hidrive file to responseWriter").Error(), 500)
 			return
 		}
+	case "authorize":
+		clientAuthURL := d.manager.GetClientAuthorizeURL(tail[1:], r.URL.Query().Get("next"))
+		http.Redirect(w, r, clientAuthURL, 302)
+		fmt.Fprintf(w, "%s", clientAuthURL)
+		fmt.Printf("%s", clientAuthURL)
 
 	default:
 		meta, err := d.GetMeta(r.URL.Path, claims.Username)

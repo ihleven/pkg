@@ -61,7 +61,9 @@ func FromHome() DriveOption {
 		d.useHome = true
 	}
 }
-
+func (d *Drive) AM() *AuthManager {
+	return d.manager
+}
 func (d *Drive) clean(inpath string, username string) string {
 
 	outpath := path.Clean(inpath)
