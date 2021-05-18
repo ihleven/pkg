@@ -7,9 +7,9 @@ type AccountI interface {
 }
 
 type Account struct {
-	ID       uint32
-	Username string
-	Password string
+	ID       uint32 `json:"id"`
+	Username string `json:"username"`
+	Password string `json:"-"`
 	// Uid, Gid      uint32
 	// Username      string
 	// Name          string

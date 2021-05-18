@@ -2,8 +2,10 @@ package auth
 
 import (
 	"embed"
+	"encoding/json"
 	"html/template"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ihleven/errors"
@@ -114,22 +116,33 @@ func (a *authentication) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			SameSite: http.SameSiteStrictMode,
 			Path:     "/",
 		})
-
-		http.Redirect(w, r, "/home", 301)
-		// w.Header().Set("Content-Type", "application/json")
-		// w.WriteHeader(http.StatusOK)
-		// json.NewEncoder(w).Encode(account)
+		if accept := r.Header.Get("Accept"); strings.HasPrefix(accept, "application/json") {
+			json.NewEncoder(w).Encode(struct {
+				Token   string   `json:"token"`
+				Account *Account `json:"account"`
+			}{Token: token, Account: account})
+		} else {
+			http.Redirect(w, r, "/home", 301)
+			// w.Header().Set("Content-Type", "application/json")
+			// w.WriteHeader(http.StatusOK)
+			// json.NewEncoder(w).Encode(account)
+		}
 		return
 	}
 
-	t, err := template.ParseFS(templates, "templates/*.html")
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+	if accept := r.Header.Get("Accept"); strings.HasPrefix(accept, "text/html") {
+		w.WriteHeader(405) // MethodNotAllowed
+	} else {
+
+		t, err := template.ParseFS(templates, "templates/*.html")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.WriteHeader(200)
+		t.ExecuteTemplate(w, "login.html", nil)
 	}
 
-	w.WriteHeader(200)
-	t.ExecuteTemplate(w, "login.html", nil)
 }
 func (a *authentication) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 

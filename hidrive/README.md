@@ -1,10 +1,5 @@
 # HiDrive
 
-## media
-
-Unter /media/ ist ein hidrive-Drive für den (lesenden) Zugriff auf den share/dir /wolfgang-ihle gemountet
-
-
 ## Drive-Handler
 
 Handler, der Methoden und Pfade auf die HiDrive-Api abbildet. 

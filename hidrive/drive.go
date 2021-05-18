@@ -94,15 +94,15 @@ func (d *Drive) clean(inpath string, username string) string {
 // 	}
 // 	return token
 // }
-func (d *Drive) GetMeta(path string, authkey string) (interface{}, error) {
+func (d *Drive) GetMeta(path string, authkey string) (*Meta, error) {
 
 	token, err := d.manager.GetAuthToken(authkey)
 	if token == nil {
 		return nil, errors.NewWithCode(401, "no valid token")
 	}
-	fmt.Println("token:", token)
+
 	path = d.clean(path, token.Alias)
-	fmt.Println("path:", path)
+
 	var wg sync.WaitGroup
 	var dir *Meta
 	var direrr error
@@ -118,53 +118,53 @@ func (d *Drive) GetMeta(path string, authkey string) (interface{}, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "")
 	}
-	fmt.Println("meta:", meta.Filesize)
+
 	if meta.Filetype == "dir" {
 		wg.Wait()
 		if direrr != nil {
 			return nil, errors.Wrap(direrr, "")
 		}
 		meta.Members = dir.Members
-		// return dir, nil
 	}
 
-	return &meta, nil
-
-	// switch meta.Type {
-	// case "dir":
-	// 	dir, err := d.GetDir(pfad, authuser)
-	// 	return dir, nil
-	// }
-
+	return meta, nil
 }
-func (d *Drive) GetDir(path string, authkey string) (*Meta, error) {
 
-	params := make(map[string][]string)
+func (d *Drive) Listdir(path string, authkey string) (*Meta, error) {
+
+	token, err := d.manager.GetAuthToken(authkey)
+	if err != nil {
+		return nil, errors.Wrap(err, "Couldn‘t get valid auth token for authkey %q", authkey)
+	}
 
 	memberfields := "members,members.id,members.name,members.nmembers,members.size,members.type,members.mime_type,members.mtime,members.image.height,members.image.width,members.image.exif"
-	params["path"] = []string{d.clean(path, authkey)}
-	params["members"] = []string{"all"}
-	params["fields"] = []string{metafields + "," + memberfields}
+	params := url.Values{
+		"path":    {d.clean(path, token.Alias)},
+		"members": {"all"},
+		"fields":  {metafields + "," + memberfields},
+	}
 
-	token, _ := d.manager.GetAuthToken(authkey)
 	body, err := d.client.Request("GET", "/dir", params, nil, token.AccessToken)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err)
 	}
 	defer body.Close()
 
 	var response Meta
 	err = json.NewDecoder(body).Decode(&response)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err)
 	}
 	return &response, nil
 }
 
 func (d *Drive) Mkdir(path string, authkey string) (*Meta, error) {
 
-	token, _ := d.manager.GetAuthToken(authkey)
-	_, err := d.client.PostDir(d.clean(path, authkey), "", "", 0, 0, token.AccessToken)
+	token, err := d.manager.GetAuthToken(authkey)
+	if err != nil {
+		return nil, errors.Wrap(err, "Couldn‘t get valid auth token for authkey %q", authkey)
+	}
+	_, err = d.client.PostDir(d.clean(path, token.Alias), "", "", 0, 0, token.AccessToken)
 	if err != nil {
 		return nil, errors.Wrap(err, "Error in post request")
 	}
@@ -174,11 +174,12 @@ func (d *Drive) Mkdir(path string, authkey string) (*Meta, error) {
 
 func (d *Drive) Rmdir(dirname, authkey string) error {
 
+	token, _ := d.manager.GetAuthToken(authkey)
 	params := url.Values{
-		"path":      {d.clean(dirname, authkey)},
+		"path":      {d.clean(dirname, token.Alias)},
 		"recursive": {"true"},
 	}
-	token, _ := d.manager.GetAuthToken(authkey)
+
 	readcloser, err := d.client.Request("DELETE", "/dir", params, nil, token.AccessToken)
 	if err != nil {
 		return errors.Wrap(err, "Error in post request")
@@ -190,10 +191,11 @@ func (d *Drive) Rmdir(dirname, authkey string) error {
 
 func (d *Drive) Rm(filename string, authkey string) error {
 
-	params := url.Values{
-		"path": {d.clean(filename, authkey)},
-	}
 	token, _ := d.manager.GetAuthToken(authkey)
+	params := url.Values{
+		"path": {d.clean(filename, token.Alias)},
+	}
+
 	_, err := d.client.Request("DELETE", "/file", params, nil, token.AccessToken)
 	if err != nil {
 		return errors.Wrap(err, "Error in delete request")
@@ -262,4 +264,21 @@ func (d *Drive) CreateFile(path string, body io.Reader, name string, modtime str
 	}
 
 	return &meta, nil
+}
+
+func (d *Drive) Save(filepath string, body io.Reader, authuser string) (*Meta, error) {
+
+	token, err := d.manager.GetAuthToken(authuser)
+	if err != nil {
+		return nil, errors.Wrap(err, "Couldn‘t get valid auth token for authuser %q", authuser)
+	}
+
+	dir, file := path.Split(d.clean(filepath, token.Alias))
+	dir = strings.TrimSuffix(dir, "/")
+	meta, err := d.client.PutFile(body, dir, file, 0, 0, token.AccessToken)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error in hidrive PUT file request")
+	}
+
+	return meta, nil
 }
