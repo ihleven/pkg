@@ -30,7 +30,7 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	claims, _, err := auth.GetClaims(r)
 	token, err := d.manager.GetAuthToken(claims.Username)
-
+	fmt.Println("claims:", claims)
 	if token == nil || err != nil {
 		http.Error(w, errors.NewWithCode(401, "Couldn‘t get valid auth token for authuser %q", claims.Username).Error(), 401)
 		return
@@ -49,7 +49,9 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "dir":
 		switch r.Method {
 		case http.MethodGet:
-			meta, err = d.client.GetDir(d.clean(tail, token.Alias), "", "", 0, 0, "", "", token.AccessToken)
+			// meta, err = d.client.GetDir(d.clean(tail, token.Alias), "", "", 0, 0, "", "", token.AccessToken)
+			meta, err = d.Listdir(tail, claims.Username)
+			// meta, err = d.GetMeta(tail, claims.Username)
 
 		case http.MethodPost:
 			meta, err = d.Mkdir(tail, claims.Username)
@@ -63,7 +65,7 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case http.MethodGet:
 			meta, err = d.client.GetMeta(d.clean(tail, claims.Username), "", "", token.AccessToken)
 		case http.MethodPut:
-			meta, err = d.UpdateFileContent(tail, r.Body, claims.Username)
+			meta, err = d.Save(tail, r.Body, claims.Username)
 		}
 
 	case "files":
@@ -98,6 +100,7 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("%s", clientAuthURL)
 
 	default:
+		fmt.Println("default:", r.URL.Path, claims.Username)
 		meta, err = d.GetMeta(r.URL.Path, claims.Username)
 	}
 
@@ -105,7 +108,11 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		enc.Encode(meta)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), errors.Code(err))
+		code := errors.Code(err)
+		if code == 65535 {
+			code = 500
+		}
+		http.Error(w, err.Error(), code)
 		return
 	}
 

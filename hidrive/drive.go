@@ -136,23 +136,26 @@ func (d *Drive) Listdir(path string, authkey string) (*Meta, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "Couldn‘t get valid auth token for authkey %q", authkey)
 	}
+	memberfields := "members.id,members.name,members.size,members.nmembers,members.type,members.mime_type,members.ctime,members.mtime,members.image.height,members.image.width,members.readable,members.writable"
 
-	memberfields := "members,members.id,members.name,members.nmembers,members.size,members.type,members.mime_type,members.mtime,members.image.height,members.image.width,members.image.exif"
 	params := url.Values{
 		"path":    {d.clean(path, token.Alias)},
 		"members": {"all"},
 		"fields":  {metafields + "," + memberfields},
 	}
-
+	// fmt.Println("params", params, token)
 	body, err := d.client.Request("GET", "/dir", params, nil, token.AccessToken)
 	if err != nil {
+		fmt.Println("error", err)
 		return nil, errors.Wrap(err)
 	}
 	defer body.Close()
-
+	// b, err := io.ReadAll(body)
+	// fmt.Println("params", string(b), err)
 	var response Meta
 	err = json.NewDecoder(body).Decode(&response)
 	if err != nil {
+		// fmt.Println("params", params, token)
 		return nil, errors.Wrap(err)
 	}
 	return &response, nil

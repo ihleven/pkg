@@ -44,7 +44,9 @@ func run(cmd *cobra.Command, args []string) error {
 
 	srvr := httpsrvr.NewServer(8000, true)
 
-	srvr.Register("/hidrive", wi)
+	srvr.Register("/wi", wi)
+	srvr.Register("/content", hidrive.NewDrive(clientID, clientSecret, hidrive.Prefix("/sync")))
+	srvr.Register("/hidrive", hidrive.NewDrive(clientID, clientSecret, hidrive.FromHome()))
 	srvr.Register("/hidrive/auth", wi.AM()) //hdhandler.AuthHandler(wi.AM()))
 	srvr.Register("/home", hidrive.NewDrive(clientID, clientSecret, hidrive.FromHome()))
 	// srvr.Register("/hidrive/auth", authMngr)

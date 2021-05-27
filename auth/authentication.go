@@ -130,7 +130,7 @@ func (a *authentication) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if accept := r.Header.Get("Accept"); strings.HasPrefix(accept, "text/html") {
+	if accept := r.Header.Get("Accept"); !strings.HasPrefix(accept, "text/html") {
 		w.WriteHeader(405) // MethodNotAllowed
 	} else {
 
