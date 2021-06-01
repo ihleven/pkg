@@ -183,11 +183,11 @@ func (d *Drive) Rmdir(dirname, authkey string) error {
 		"recursive": {"true"},
 	}
 
-	readcloser, err := d.client.Request("DELETE", "/dir", params, nil, token.AccessToken)
+	_, err := d.client.Request("DELETE", "/dir", params, nil, token.AccessToken)
 	if err != nil {
-		return errors.Wrap(err, "Error in post request")
+		return errors.Wrap(err, "Error in delete request")
 	}
-	defer readcloser.Close()
+	// defer readcloser.Close()
 
 	return nil
 }
@@ -208,16 +208,19 @@ func (d *Drive) Rm(filename string, authkey string) error {
 }
 func (d *Drive) CreateFile(path string, body io.Reader, name string, modtime string, authuser string) (*Meta, error) {
 
-	token, err := d.manager.GetAccessToken(authuser)
+	token, err := d.manager.GetAuthToken(authuser)
 	if err != nil {
 		return nil, errors.Wrap(err, "Couldn‘t get valid auth token for authuser %q", authuser)
 	}
-	respBody, err := d.client.Request("POST", "/file", url.Values{
-		"dir":      {path},
+	params := url.Values{
+		"dir":      {d.clean(path, token.Alias)},
 		"name":     {name},
 		"on_exist": {"autoname"},
-		"mtime":    {modtime},
-	}, body, token)
+	}
+	if modtime != "" {
+		params.Set("mtime", modtime)
+	}
+	respBody, err := d.client.Request("POST", "/file", params, body, token.AccessToken)
 	if err != nil {
 		return nil, errors.Wrap(err, "Error in post request")
 	}

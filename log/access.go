@@ -48,6 +48,8 @@ type AccessLogger struct {
 }
 
 func (l AccessLogger) Access(reqNum uint64, reqID string, start time.Time, remoteAddr, username, method, uri, proto string, status, size int, duration time.Duration, referer, agent string) {
+
+	return
 	// username := "-"
 
 	// if req.URL.User != nil {

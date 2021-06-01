@@ -182,11 +182,11 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer func(start time.Time, reqnum uint64, reqid string, name string) {
-		err := recover()
-		if err != nil {
-			color.Red(" error request %d: %s %s => %d (%d bytes, %v)\n", reqnum, reqid, r.URL.Path, rw.statusCode, rw.Count(), time.Since(start))
-			color.Red(" recover from panic  =>  %+v\n", err)
-		}
+		// err := recover()
+		// if err != nil {
+		// 	color.Red(" error request %d: %s %s => %d (%d bytes, %v)\n", reqnum, reqid, r.URL.Path, rw.statusCode, rw.Count(), time.Since(start))
+		// 	color.Red(" recover from panic  =>  %+v\n", err)
+		// }
 
 		s.logger.Access(reqnum, reqid, start, r.RemoteAddr, "user", r.Method, r.URL.Path, r.Proto, rw.statusCode, int(rw.Count()), time.Since(start), r.Referer(), name)
 		color.Green("request %d: %s %s => %d (%d bytes, %v)\n", reqnum, reqid, r.URL.Path, rw.statusCode, rw.Count(), time.Since(start))

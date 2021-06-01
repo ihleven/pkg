@@ -118,6 +118,52 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (d *Drive) credentials(r *http.Request) (string, string) {
+	fmt.Println("credentials")
+	claims, _, err := auth.GetClaims(r)
+	if err != nil {
+		fmt.Println("MauthManager.credentials -1- ERROR:", err)
+		return "", ""
+	}
+	fmt.Println("claims:", claims)
+	token, err := d.manager.GetAuthToken(claims.Username)
+	if err != nil {
+		fmt.Println("MauthManager.credentials - 2 - ERROR:", err)
+		return "", ""
+	}
+	return d.clean(r.URL.Path, token.Alias), token.AccessToken
+}
+func (d *Drive) ThumbHandler(w http.ResponseWriter, r *http.Request) {
+	path, accessToken := d.credentials(r)
+	params := r.URL.Query()
+	params.Set("path", path)
+	//url.Values{"pid": {tail[1:]}})
+
+	body, err := d.client.Request("GET", "/file/thumbnail", params, nil, accessToken)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	defer body.Close()
+	_, err = io.Copy(w, body)
+}
+
+func (d *Drive) Serve(w http.ResponseWriter, r *http.Request) {
+	claims, _, _ := auth.GetClaims(r)
+	token, _ := d.manager.GetAuthToken(claims.Username)
+	fmt.Println("Serve", claims, token)
+	params := r.URL.Query()
+	params.Set("path", d.clean(r.URL.Path, token.Alias))
+	body, err := d.client.Request("GET", "/file", params, nil, token.AccessToken)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	defer body.Close()
+	_, err = io.Copy(w, body)
+
+}
+
 //go:embed hdhandler/templates/*
 var templates embed.FS
 

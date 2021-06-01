@@ -2,6 +2,7 @@ package hidrive
 
 import (
 	"io/fs"
+	"net/url"
 	"time"
 )
 
@@ -85,7 +86,8 @@ type Meta struct {
 
 // Name is part of fs.FileInfo and fs.DirEntry interface
 func (m *Meta) Name() string { // base name of the file
-	return m.NameURLEncoded
+	unescapedName, _ := url.QueryUnescape(m.NameURLEncoded)
+	return unescapedName
 }
 
 // IsDir is part of fs.FileInfo and fs.DirEntry interface

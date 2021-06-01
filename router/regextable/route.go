@@ -106,6 +106,8 @@ func (r *router) Register(method, pattern string, handler interface{}) {
 
 	case func(http.ResponseWriter, *http.Request) error:
 		r.routes = append(r.routes, route{method, routeRE, types, nil, nil, ht})
+	default:
+		fmt.Println("DEFAULT")
 	}
 
 }

@@ -147,7 +147,7 @@ func (m *AuthManager) GetAuthToken(key string) (*AuthToken, error) { //<-chan st
 			// access, err := m.Refresh(key)
 			new, err := m.oauthClient.RefreshToken(auth.Token.RefreshToken)
 			if err != nil {
-				return nil, errors.NewWithCode(401, "no token")
+				return nil, errors.NewWithCode(401, err.Error())
 			}
 			auth.Token = new
 			auth.ExpiresAt = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
