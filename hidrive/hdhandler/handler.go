@@ -53,7 +53,7 @@ func AuthHandler(m *hidrive.AuthManager) http.HandlerFunc {
 		default:
 
 			if key, found := r.URL.Query()["refresh"]; found {
-				m.Refresh(key[0])
+				m.Refresh(key[0], false)
 			}
 
 			t, err := template.ParseFS(templates, "templates/*.html")

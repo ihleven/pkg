@@ -45,6 +45,7 @@ func (c *HiDriveClient) Request(method, endpoint string, params url.Values, body
 		if os.IsTimeout(err) {
 			return nil, errors.Wrap(err, "hidrive client request timeout exceeded") // &HiDriveError{ECode: 500, EMessage: "client timeout exceeded"}
 		}
+		fmt.Println(" !!! HiDrive request error: ", err)
 		return nil, errors.Wrap(err, "HTTP client couldn't Do request")
 	}
 	// fmt.Println("client response:", response)
@@ -72,7 +73,7 @@ func (c *HiDriveClient) Request(method, endpoint string, params url.Values, body
 
 	default:
 		hidriveError := NewHidriveError(response)
-		if err != nil {
+		if hidriveError == nil {
 			return nil, errors.Wrap(err, "Couldn‘t parse hidrive error")
 		}
 		return nil, hidriveError
@@ -147,13 +148,14 @@ func (c *HiDriveClient) GetMeta(path, pid, fields string, token string) (*Meta, 
 		return nil, errors.Wrap(err, "Couldn‘t execute hidrive meta request")
 	}
 	defer body.Close()
-
+	bytes, _ := io.ReadAll(body)
 	var meta Meta
-	err = json.NewDecoder(body).Decode(&meta)
+	err = json.Unmarshal(bytes, &meta)
+	// err = json.NewDecoder(body).Decode(&meta)
 	if err != nil {
 		return nil, errors.Wrap(err, "Couldn't decode response body")
 	}
-
+	fmt.Println("meta:", string(bytes), meta.Path, meta.CTime, meta.MTime)
 	return &meta, nil
 }
 
