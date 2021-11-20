@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	gopath "path"
 	"strings"
 	"sync"
@@ -26,111 +27,125 @@ func shiftPath(p string) (head, tail string) {
 }
 
 func (d *Drive) credentials(r *http.Request) (string, string) {
-	fmt.Println("credentials")
+
 	claims, _, err := auth.GetClaims(r)
 	if err != nil {
 		fmt.Println("MauthManager.credentials -1- ERROR:", err)
 		return "", ""
 	}
-	fmt.Println("claims:", claims)
-	token, err := d.manager.GetAuthToken(claims.Username)
+
+	token, err := d.manager.GetAccessToken(claims.Username)
 	if err != nil {
 		fmt.Println("MauthManager.credentials - 2 - ERROR:", err)
 		return "", ""
 	}
-	return d.clean(r.URL.Path, token.Alias), token.AccessToken
+	return d.fullpath(r.URL.Path, token.Alias), token.AccessToken
 }
 
-// ServeHTTP implements http.Handler interface for a drive.
-//
+// func (d *Drive) token(r *http.Request) (*AuthToken, error) {
+
+// 	claims, _, err := auth.GetClaims(r)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	token, err := d.manager.GetAccessToken(claims.Username)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return token, nil
+// }
+
 func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000") //r.Header.Get("Origin"))
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-	path, accessToken := d.credentials(r)
-	if accessToken == "" {
+	token, err := d.manager.GetAccessToken(r.Context().Value("username").(string))
+	if err != nil {
 		http.Error(w, errors.NewWithCode(401, "Couldn‘t get valid auth token").Error(), http.StatusUnauthorized)
 		return
 	}
 
-	fmt.Println("drive.Handler", r.URL.Path, path, accessToken)
-
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "    ")
 
-	head, tail := shiftPath(r.URL.Path)
+	head, path := shiftPath(r.URL.Path)
+	fullpath := d.fullpath(path, token.Alias)
 
-	var err error
 	var meta *Meta
 	var body io.ReadCloser
 
 	switch head {
 
-	case "dir":
-		switch r.Method {
-		case http.MethodGet:
-			meta, err = d.client.GetDir(path, "", "", 0, 0, "", "", accessToken)
-			// meta, err = d.Listdir(tail, claims.Username)
-
-		case http.MethodPost:
-			meta, err = d.client.PostDir(path, "", "", 0, 0, accessToken)
-			// meta, err = d.Mkdir(path, accessToken)
-
-		case http.MethodDelete:
-			params := url.Values{"path": {path}, "recursive": {"true"}}
-			_, err = d.client.Request("DELETE", "/dir", params, nil, accessToken)
-			// err = d.Rmdir(tail, claims.Username)
-		}
-
 	case "meta":
 		switch r.Method {
 		case http.MethodGet:
-			meta, err = d.client.GetMeta(path, "", "", accessToken)
+			meta, err = d.Meta(path, token)
 		case http.MethodPut:
 			dir, file := gopath.Split(path)
 			dir = strings.TrimSuffix(dir, "/")
-			meta, err = d.client.PutFile(body, dir, file, 0, 0, accessToken)
+			meta, err = d.client.PutFile(body, dir, file, 0, 0, token.AccessToken)
 			// meta, err = d.Save(tail, r.Body, claims.Username)
 		}
 
+	// case "dir":
+	// 	switch r.Method {
+	// 	case http.MethodGet:
+	// 		meta, err = d.client.GetDir(path, "", "", 0, 0, "", "", accessToken)
+	// 		// meta, err = d.Listdir(tail, claims.Username)
+
+	// 	case http.MethodPost:
+	// 		meta, err = d.client.PostDir(path, "", "", 0, 0, accessToken)
+	// 		// meta, err = d.Mkdir(path, accessToken)
+
+	// 	case http.MethodDelete:
+	// 		params := url.Values{"path": {path}, "recursive": {"true"}}
+	// 		_, err = d.client.Request("DELETE", "/dir", params, nil, accessToken)
+	// 		// err = d.Rmdir(tail, claims.Username)
+	// 	}
+
 	case "files":
-		pid := tail[1:]
-		body, err = d.client.GetFile("", pid, accessToken)
+		body, err = d.client.Request("GET", "/file", url.Values{"pid": {path[1:]}}, nil, token.AccessToken)
 		if err == nil {
 			defer body.Close()
 			_, err = io.Copy(w, body)
 		}
 
 	case "serve":
-		body, err = d.client.GetFile(path, "", accessToken)
+		body, err = d.client.Request("GET", "/file", url.Values{"path": {fullpath}}, nil, token.AccessToken)
 		if err == nil {
 			defer body.Close()
 			_, err = io.Copy(w, body)
 		}
 
 	case "thumbs":
-		params := r.URL.Query()
-		if len(tail) > 1 {
-			params.Set("path", path)
+		params := r.URL.Query() // width, height, mode & pid
+		if len(path) > 1 {      // splitpath leifert mindestens "/"
+			params.Set("path", fullpath)
 		}
-		body, err = d.client.Request("GET", "/file/thumbnail", params, nil, accessToken) //url.Values{"pid": {tail[1:]}})
+
+		body, err = d.client.Request("GET", "/file/thumbnail", params, nil, token.AccessToken)
 		if err == nil {
 			defer body.Close()
 			_, err = io.Copy(w, body)
 		}
 
-	case "authorize":
-		clientAuthURL := d.manager.GetClientAuthorizeURL(tail[1:], r.URL.Query().Get("next"))
-		http.Redirect(w, r, clientAuthURL, 302)
-		fmt.Fprintf(w, "%s", clientAuthURL)
-		fmt.Printf("%s", clientAuthURL)
+	case "info":
+		info, err := d.manager.oauthClient.TokenInfo(token.AccessToken)
+		if err == nil {
+			enc.Encode(info)
+			return
+		}
+
+	// case "authorize":
+	// 	clientAuthURL := d.manager.GetClientAuthorizeURL(path[1:], r.URL.Query().Get("next"))
+	// 	http.Redirect(w, r, clientAuthURL, 302)
+	// 	fmt.Fprintf(w, "%s", clientAuthURL)
+	// 	fmt.Printf("%s", clientAuthURL)
 
 	default:
-		var claims auth.Claims
-		claims, _, err = auth.GetClaims(r)
-		fmt.Println("drive handler default:", claims, r.URL.Path, claims.Username)
-		meta, err = d.GetMeta(r.URL.Path, claims.Username)
+
+		// meta, err = d.Stream(r.URL.Path, token)
+		meta, err = d.GetMeta(r.URL.Path, token)
+
 	}
 
 	switch {
@@ -146,6 +161,7 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		enc.Encode(meta)
 	}
 }
+
 func (d *Drive) MetaHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000") //r.Header.Get("Origin"))
@@ -157,7 +173,7 @@ func (d *Drive) MetaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println("drive.MetaHandler", r.URL.Path, path, accessToken)
+	fmt.Println("drive.MetaHandler", r.URL.Path, path, accessToken, d.prefix)
 
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "    ")
@@ -183,13 +199,17 @@ func (d *Drive) MetaHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, errors.Wrap(err, "Couldn‘t get meta").Error(), 500)
 		return
 	}
-	if meta.Path == "/users/matt.ihle" {
-		meta.Path = "/"
-		meta.NameURLEncoded = "home"
+	// if meta.Path == "/users/matt.ihle" {
+	// 	meta.Path = "/"
+	// 	meta.NameURLEncoded = "home"
+	// }
+	// if strings.HasPrefix(meta.Path, "/users/matt.ihle") {
+	// 	meta.Path = strings.TrimPrefix(meta.Path, "/users/matt.ihle")
+	// }
+	if d.prefix != "" {
+		meta.Path = strings.TrimPrefix(meta.Path, d.prefix)
 	}
-	if strings.HasPrefix(meta.Path, "/users/matt.ihle") {
-		meta.Path = strings.TrimPrefix(meta.Path, "/users/matt.ihle")
-	}
+	fmt.Println("meta.Path = ", meta.Path, d.prefix)
 
 	if meta.Filetype == "dir" {
 		wg.Wait()
@@ -201,15 +221,18 @@ func (d *Drive) MetaHandler(w http.ResponseWriter, r *http.Request) {
 		for i, m := range meta.Members {
 			// fmt.Println("meta handler -> dir", m.NameURLEncoded, m.Name())
 
-			if meta.Members[i].Path == "/users/matt.ihle" {
-				meta.Members[i].Path = "/"
-			}
-			if strings.HasPrefix(meta.Members[i].Path, "/users/matt.ihle") {
-				meta.Members[i].Path = strings.TrimPrefix(meta.Members[i].Path, "/users/matt.ihle")
-			}
+			// if meta.Members[i].Path == "/users/matt.ihle" {
+			// 	meta.Members[i].Path = "/"
+			// }
+			// if strings.HasPrefix(meta.Members[i].Path, "/users/matt.ihle") {
+			// 	meta.Members[i].Path = strings.TrimPrefix(meta.Members[i].Path, "/users/matt.ihle")
+			// }
 			meta.Members[i].NameURLEncoded = m.Name()
 			// unescapedName, _ := url.QueryUnescape(m.NameURLEncoded)
 			// m.NameURLEncoded = unescapedName
+			if d.prefix != "" {
+				meta.Members[i].Path = strings.TrimPrefix(m.Path, d.prefix)
+			}
 		}
 	}
 
@@ -227,7 +250,7 @@ func (d *Drive) MetaHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (d *Drive) DirHandler(w http.ResponseWriter, r *http.Request) {
+func (d *Drive) DirHandlerDeprecated(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000") //r.Header.Get("Origin"))
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -313,6 +336,41 @@ func (d *Drive) Serve(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), errors.Code(err))
 	}
+}
+
+func (d *Drive) FileContent(w http.ResponseWriter, r *http.Request) {
+
+	_, accessToken := d.credentials(r)
+
+	dir, file := path.Split(r.URL.Path)
+	fmt.Println("asdf", dir, file)
+	params := r.URL.Query()
+	params.Set("dir", strings.TrimRight(dir, "/"))
+	params.Set("name", file)
+
+	body, err := d.client.Request("PUT", "/file", params, r.Body, accessToken)
+	if err != nil {
+
+		http.Error(w, err.Error(), errors.Code(err))
+		return
+	}
+	defer body.Close()
+
+	var meta Meta
+	err = json.NewDecoder(body).Decode(&meta)
+	if err != nil {
+		http.Error(w, err.Error(), errors.Code(err))
+		return
+	}
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "    ")
+	err = enc.Encode(meta)
+	if err != nil {
+		http.Error(w, err.Error(), errors.Code(err))
+		return
+	}
+
 }
 
 //go:embed hdhandler/templates/*

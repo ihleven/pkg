@@ -6,39 +6,34 @@ import (
 	"time"
 )
 
-var defaultMetaFields = "ctime,has_dirs,mtime,readable,size,type,writable"
-
-var allDirFields = "chash,ctime,has_dirs,id,members,members.chash,members.ctime,members.has_dirs,members.id,members.image.exif,members.image.height,members.image.width,members.mhash,members.mime_type,members.mohash,members.mtime,members.name,members.nmembers,members.nhash,members.parent_id,members.path,members.readable,members.rshare,members.size,members.type,members.writable,mhash,mohash,mtime,name,nhash,nmembers,parent_id,path,readable,rshare,size,type,writable"
-
-var dirfields = "id,name,path,type,mime_type,ctime,mtime,readable,writable,size,nmembers,has_dirs,parent_id,rshare,shareable,teamfolder"
-var metafields = "id,name,path,type,mime_type,ctime,mtime,readable,writable,size,nmembers,has_dirs,parent_id"
-var extrafields = "rshare,shareable,teamfolder,zone"
+// meta
+// left out: ,has_dirs,parent_id, rshare,shareable,teamfolder,zone     "chash,mhash,mohash,nhash"
+var metafields = "id,name,path,type,mime_type,ctime,mtime,readable,writable,size,nmembers"
 var imagefields = "image.exif,image.width,image.height"
-var defaultfields = "ctime,has_dirs,mtime,readable,size,type,writable"
-var memberfields = "members,members.ctime,members.has_dirs,members.id,members.image.exif,members.image.height,members.image.width,members.mime_type,members.mtime,members.name,members.nmembers,members.parent_id,members.path,members.readable,members.rshare,members.size,members.type,members.writable"
+var memberfields = "members.name,members.readable,members.writable,members.type,members.mime_type,members.mtime,members.ctime,members.size,members.nmembers,members.id,members.image.height,members.image.width,members.image.exif"
 
 type Meta struct {
-	ID             string `json:"id"`       //    - string    - path id of the directory
-	NameURLEncoded string `json:"name"`     //    - string    - URL-encoded name of the directory
-	Path           string `json:"path"`     //    - string    - URL-encoded path to the directory
-	Filetype       string `json:"type"`     //    - string    - e.g. "dir"
-	CTime          int64  `json:"ctime"`    //    - timestamp - ctime of the directory
-	MTime          int64  `json:"mtime"`    //    - timestamp - mtime of the directory
-	HasDirs        bool   `json:"has_dirs"` //    - bool      - does the directory contain subdirs?
-	Readable       bool   `json:"readable"` //    - bool      - read-permission for the directory
-	Writable       bool   `json:"writable"` //    - bool      - write-permission for the directory
+	NameURLEncoded string `json:"name"`           //    - string    - URL-encoded name of the directory
+	Path           string `json:"path,omitempty"` //    - string    - URL-encoded path to the directory
+	Filetype       string `json:"type"`           //    - string    - e.g. "dir"
+	MIMEType       string `json:"mime_type"`
+	MTime          int64  `json:"mtime,omitempty"`    //    - timestamp - mtime of the directory
+	CTime          int64  `json:"ctime,omitempty"`    //    - timestamp - ctime of the directory
+	Readable       bool   `json:"readable,omitempty"` //    - bool      - read-permission for the directory
+	Writable       bool   `json:"writable,omitempty"` //    - bool      - write-permission for the directory
+	Filesize       uint64 `json:"size,omitempty"`
+	Nmembers       int    `json:"nmembers,omitempty"`
+	HasDirs        bool   `json:"has_dirs,omitempty"` //    - bool      - does the directory contain subdirs?
+	ID             string `json:"id,omitempty"`       //    - string    - path id of the directory
+	ParentID       string `json:"parent_id,omitempty"`
 	// default: ctime,has_dirs,mtime,readable,size,type,writable
-
-	Filesize uint64 `json:"size"`
-	MIMEType string `json:"mime_type"`
-	Nmembers int    `json:"nmembers"`
-	ParentID string `json:"parent_id"`
 	// Chash    string      `json:"chash"`
 	// Mhash    string      `json:"mhash"`
 	// MOhash   string      `json:"mohash"`
 	// Nhash    string      `json:"nhash"`
-	Image   *Image `json:"image"`
-	Members []Meta `json:"members"`
+	Image   *Image `json:"image,omitempty"`
+	Members []Meta `json:"members,omitempty"`
+	Content string `json:"content,omitempty"`
 }
 
 type Image struct {
@@ -58,8 +53,8 @@ type Exif struct {
 	// 	ISO              string
 	// 	ImageHeight      string
 	// 	ImageWidth       string
-	// 	Make             string
-	// 	Model            string
+	Make        string
+	Model       string
 	Orientation int // string
 	// 	ResolutionUnit   string
 	// 	XResolution      string

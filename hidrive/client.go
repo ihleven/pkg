@@ -74,7 +74,7 @@ func (c *HiDriveClient) Request(method, endpoint string, params url.Values, body
 	default:
 		hidriveError := NewHidriveError(response)
 		if hidriveError == nil {
-			return nil, errors.Wrap(err, "Couldn‘t parse hidrive error")
+			return nil, errors.Wrap(err, "Couldn‘t parse hidrive error") // err muss hier nil sein
 		}
 		return nil, hidriveError
 	}
@@ -98,49 +98,15 @@ func (c *HiDriveClient) GetFile(path, pid string, token string) (io.ReadCloser, 
 	return body, nil
 }
 
-func (c *HiDriveClient) DeleteFileUnused(path, pid string, parentMTime int, token string) error {
-
-	var query url.Values
-	if path != "" {
-		query.Set("path", path)
-	}
-	if pid != "" {
-		query.Set("pid", pid)
-	}
-	if parentMTime != 0 {
-		query.Set("parent_mtime", strconv.Itoa(parentMTime))
-	}
-	_, err := c.Request("DELETE", "/file", query, nil, token)
-	if err != nil {
-		return errors.Wrap(err, "Error in DeleteFile request")
-	}
-
-	return nil
-}
-
-func (c *HiDriveClient) GetThumbUnused(path, pid string, token string) (io.ReadCloser, error) {
-
-	var query url.Values
-	if path != "" {
-		query["path"] = []string{path}
-	}
-	if pid != "" {
-		query["pid"] = []string{pid}
-	}
-
-	body, err := c.Request("GET", "/file/thumbnail", query, nil, token)
-	if err != nil {
-		return nil, errors.Wrap(err, "Error in get file request")
-	}
-
-	return body, nil
-}
-
 func (c *HiDriveClient) GetMeta(path, pid, fields string, token string) (*Meta, error) {
+
+	if fields == "" {
+		fields = metafields + "," + imagefields
+	}
 
 	params := url.Values{
 		"path":   {path},
-		"fields": {metafields + "," + imagefields},
+		"fields": {fields},
 	}
 
 	body, err := c.Request("GET", "/meta", params, nil, token)
@@ -148,14 +114,14 @@ func (c *HiDriveClient) GetMeta(path, pid, fields string, token string) (*Meta, 
 		return nil, errors.Wrap(err, "Couldn‘t execute hidrive meta request")
 	}
 	defer body.Close()
-	bytes, _ := io.ReadAll(body)
+	// bytes, _ := io.ReadAll(body)
 	var meta Meta
-	err = json.Unmarshal(bytes, &meta)
-	// err = json.NewDecoder(body).Decode(&meta)
+	// err = json.Unmarshal(bytes, &meta)
+	err = json.NewDecoder(body).Decode(&meta)
 	if err != nil {
 		return nil, errors.Wrap(err, "Couldn't decode response body")
 	}
-	fmt.Println("meta:", string(bytes), meta.Path, meta.CTime, meta.MTime)
+
 	return &meta, nil
 }
 
@@ -169,9 +135,9 @@ func (c *HiDriveClient) GetDir(path, pid, members string, offset, limit int, fie
 	if offset != 0 || limit != 0 {
 		params["limit"] = []string{strconv.Itoa(offset) + "," + strconv.Itoa(limit)}
 	}
-
-	// memberfields := "members,members.id,members.name,members.nmembers,members.size,members.type,members.mime_type,members.mtime,members.image.height,members.image.width,members.image.exif"
-	memberfields := "members.id,members.name,members.path,members.size,members.nmembers,members.type,members.mime_type,members.ctime,members.mtime,members.image.height,members.image.width,members.readable,members.writable"
+	if fields == "" {
+		fields = memberfields
+	}
 	params["fields"] = []string{memberfields}
 
 	body, err := c.Request("GET", "/dir", params, nil, token)
@@ -180,13 +146,18 @@ func (c *HiDriveClient) GetDir(path, pid, members string, offset, limit int, fie
 	}
 	defer body.Close()
 
-	var response Meta
-	err = json.NewDecoder(body).Decode(&response)
+	// bytes, _ := io.ReadAll(body)
+	// // fmt.Printf("dir: %s\n", bytes)
+	// var meta Meta
+	// err = json.Unmarshal(bytes, &meta)
+
+	var meta Meta
+	err = json.NewDecoder(body).Decode(&meta)
 	if err != nil {
 		return nil, err
 	}
 
-	return &response, nil
+	return &meta, nil
 }
 
 func (c *HiDriveClient) PostDir(path, pid, on_exist string, mtime, parent_mtime int, token string) (*Meta, error) {
@@ -217,10 +188,13 @@ func (c *HiDriveClient) PutFile(content io.Reader, dir, name string, mtime, pare
 		"dir":  {dir},
 		"name": {name},
 	}
-	// if mtime != 0 {
-	// 	params.Add("mtime", mtime)
-	// }
-	fmt.Println("put", params, token)
+	if mtime != 0 {
+		params.Add("mtime", strconv.Itoa(mtime))
+	}
+	if parent_mtime != 0 {
+		params.Add("parent_mtime", strconv.Itoa(parent_mtime))
+	}
+
 	body, err := c.Request("PUT", "/file", params, content, token)
 	if err != nil {
 		return nil, errors.Wrap(err, "Couldn‘t execute hidrive put file request")

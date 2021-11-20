@@ -10,6 +10,8 @@ type ResponseWriter struct {
 	http.ResponseWriter
 	count      uint64
 	statusCode int
+	// status int
+	// length int
 }
 
 // NewResponseWriter wraps given http.ResponseWriter in a ResponseWriter overwriting the WriteHeader method
