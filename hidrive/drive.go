@@ -20,7 +20,7 @@ func NewDrive(clientID, clientSecret string, opts ...DriveOption) *Drive {
 		confmap: make(map[string]config),
 	}
 
-	// Loop through each option
+	// Loop through and apply each option
 	for _, opt := range opts {
 		opt(d)
 	}
@@ -61,6 +61,7 @@ func (d *Drive) AM() *AuthManager {
 	return d.manager
 }
 
+// translate path relative to d to full hidrive path
 func (d *Drive) fullpath(drivepath string, username string) string {
 
 	cleanpath := path.Clean(drivepath)
@@ -70,20 +71,11 @@ func (d *Drive) fullpath(drivepath string, username string) string {
 	} else if d.useHome {
 		return path.Join("/users", username, cleanpath)
 	}
-	// else if username != "" {
-	// 	if strings.HasPrefix(outpath, "/home") {
-	// 		outpath = strings.Replace(outpath, "/home", "/users/"+username, 1)
-	// 	}
-	// 	if strings.HasPrefix(outpath, "/~") {
-	// 		outpath = strings.Replace(outpath, "/~", "/users/"+username, 1)
-	// 	}
-	// }
-	// else {
-	//     tail = strings.Replace(tail, "/home", "/", 1)
-	// }
+
 	return cleanpath
 }
 
+// translate absolute hidrive path to relative drive path
 func (d *Drive) drivepath(fullpath string, username string) string {
 
 	if d.prefix != "" {
@@ -101,7 +93,7 @@ func (d *Drive) drivepath(fullpath string, username string) string {
 	return fullpath
 }
 
-func (d *Drive) parse(response io.Reader) (*Meta, error) {
+func (d *Drive) processMetaResponse(response io.Reader) (*Meta, error) {
 	var meta Meta
 	err := json.NewDecoder(response).Decode(&meta)
 	if err != nil {
@@ -119,9 +111,33 @@ func (d *Drive) parse(response io.Reader) (*Meta, error) {
 	return &meta, nil
 }
 
-func (d *Drive) Tkn(username string) *AuthToken {
+// func (d *Drive) Tkn(username string) *AuthToken {
 
-	token, err := d.manager.GetAuthToken(username)
+// 	token, err := d.manager.GetAccessToken(username)
+// 	if err != nil {
+// 		return nil
+// 	}
+// 	return token
+// }
+
+// func (d *Drive) credentialsDeprecated(r *http.Request) (string, string) {
+
+// 	claims, _, err := auth.GetClaims(r)
+// 	if err != nil {
+// 		fmt.Println("MauthManager.credentials -1- ERROR:", err)
+// 		return "", ""
+// 	}
+
+// 	token, err := d.manager.GetAccessToken(claims.Username)
+// 	if err != nil {
+// 		fmt.Println("MauthManager.credentials - 2 - ERROR:", err)
+// 		return "", ""
+// 	}
+// 	return d.fullpath(r.URL.Path, token.Alias), token.AccessToken
+// }
+
+func (d *Drive) Token(authkey string) *AuthToken {
+	token, err := d.manager.GetAccessToken(authkey)
 	if err != nil {
 		return nil
 	}

@@ -141,6 +141,13 @@ Die Pfade haben keinen filespezifischen Prefix, sondern es wird aus dem Pfad erm
 Templates können dabei für Filetypen registiert werden. Dir und File sind Pflicht, für spezielle Filetypen können aber eigene Templates hinterlegt werden (Image, Markdown)
 
 
+# Auth
 
+Mit jedem Request steckt im Context ein username 
+
+Dieser username liefert über eine Map ein Authentifikationsobjekt.
+
+
+Dieses Authentifikationsobjekt enthält das token soie die Lebensdauer 
 
 

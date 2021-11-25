@@ -10,11 +10,9 @@ import (
 	"path"
 	gopath "path"
 	"strings"
-	"sync"
 	"text/template"
 
 	"github.com/ihleven/errors"
-	"github.com/ihleven/pkg/auth"
 )
 
 func shiftPath(p string) (head, tail string) {
@@ -26,83 +24,58 @@ func shiftPath(p string) (head, tail string) {
 	return p[1:i], p[i:]
 }
 
-func (d *Drive) credentials(r *http.Request) (string, string) {
-
-	claims, _, err := auth.GetClaims(r)
-	if err != nil {
-		fmt.Println("MauthManager.credentials -1- ERROR:", err)
-		return "", ""
-	}
-
-	token, err := d.manager.GetAccessToken(claims.Username)
-	if err != nil {
-		fmt.Println("MauthManager.credentials - 2 - ERROR:", err)
-		return "", ""
-	}
-	return d.fullpath(r.URL.Path, token.Alias), token.AccessToken
-}
-
-// func (d *Drive) token(r *http.Request) (*AuthToken, error) {
-
-// 	claims, _, err := auth.GetClaims(r)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	token, err := d.manager.GetAccessToken(claims.Username)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return token, nil
-// }
-
 func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	token, err := d.manager.GetAccessToken(r.Context().Value("username").(string))
-	if err != nil {
-		http.Error(w, errors.NewWithCode(401, "Couldn‘t get valid auth token").Error(), http.StatusUnauthorized)
+	token := d.Token(r.Context().Value("username").(string))
+	if token == nil {
+		http.Error(w, "Couldn‘t get valid auth token", http.StatusUnauthorized)
 		return
 	}
 
+	var (
+		err  error
+		meta *Meta
+		body io.ReadCloser
+	)
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "    ")
 
 	head, path := shiftPath(r.URL.Path)
-	fullpath := d.fullpath(path, token.Alias)
-
-	var meta *Meta
-	var body io.ReadCloser
 
 	switch head {
 
 	case "meta":
+		// fullpath := d.fullpath(r.URL.Path, token.Alias)
 		switch r.Method {
 		case http.MethodGet:
-			meta, err = d.Meta(path, token)
+			meta, err = d.Meta(d.fullpath(path, token.Alias), token)
 		case http.MethodPut:
-			dir, file := gopath.Split(path)
+			dir, file := gopath.Split(d.fullpath(path, token.Alias))
 			dir = strings.TrimSuffix(dir, "/")
 			meta, err = d.client.PutFile(body, dir, file, 0, 0, token.AccessToken)
 			// meta, err = d.Save(tail, r.Body, claims.Username)
 		}
 
-	// case "dir":
-	// 	switch r.Method {
-	// 	case http.MethodGet:
-	// 		meta, err = d.client.GetDir(path, "", "", 0, 0, "", "", accessToken)
-	// 		// meta, err = d.Listdir(tail, claims.Username)
+	case "dir":
+		fullpath := d.fullpath(r.URL.Path, token.Alias)
 
-	// 	case http.MethodPost:
-	// 		meta, err = d.client.PostDir(path, "", "", 0, 0, accessToken)
-	// 		// meta, err = d.Mkdir(path, accessToken)
+		switch r.Method {
+		case http.MethodGet:
+			meta, err = d.client.GetDir(fullpath, "", "", 0, 0, "", "", token.AccessToken)
+			// meta, err = d.Listdir(tail, claims.Username)
 
-	// 	case http.MethodDelete:
-	// 		params := url.Values{"path": {path}, "recursive": {"true"}}
-	// 		_, err = d.client.Request("DELETE", "/dir", params, nil, accessToken)
-	// 		// err = d.Rmdir(tail, claims.Username)
-	// 	}
+		case http.MethodPost:
+			meta, err = d.client.PostDir(fullpath, "", "", 0, 0, token.AccessToken)
+			// meta, err = d.Mkdir(path, accessToken)
+
+		case http.MethodDelete:
+			params := url.Values{"path": {path}, "recursive": {"true"}}
+			_, err = d.client.Request("DELETE", "/dir", params, nil, token.AccessToken)
+			// err = d.Rmdir(tail, claims.Username)
+		}
 
 	case "files":
+
 		body, err = d.client.Request("GET", "/file", url.Values{"pid": {path[1:]}}, nil, token.AccessToken)
 		if err == nil {
 			defer body.Close()
@@ -110,7 +83,7 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "serve":
-		body, err = d.client.Request("GET", "/file", url.Values{"path": {fullpath}}, nil, token.AccessToken)
+		body, err = d.client.Request("GET", "/file", url.Values{"path": {d.fullpath(path, token.Alias)}}, nil, token.AccessToken)
 		if err == nil {
 			defer body.Close()
 			_, err = io.Copy(w, body)
@@ -119,7 +92,7 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "thumbs":
 		params := r.URL.Query() // width, height, mode & pid
 		if len(path) > 1 {      // splitpath leifert mindestens "/"
-			params.Set("path", fullpath)
+			params.Set("path", d.fullpath(path, token.Alias))
 		}
 
 		body, err = d.client.Request("GET", "/file/thumbnail", params, nil, token.AccessToken)
@@ -135,17 +108,79 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-	// case "authorize":
-	// 	clientAuthURL := d.manager.GetClientAuthorizeURL(path[1:], r.URL.Query().Get("next"))
-	// 	http.Redirect(w, r, clientAuthURL, 302)
-	// 	fmt.Fprintf(w, "%s", clientAuthURL)
-	// 	fmt.Printf("%s", clientAuthURL)
+	case "authorize":
+		clientAuthURL := d.manager.GetClientAuthorizeURL(path[1:], r.URL.Query().Get("next"))
+		http.Redirect(w, r, clientAuthURL, 302)
+		fmt.Fprintf(w, "%s", clientAuthURL)
+		fmt.Printf("%s", clientAuthURL)
 
+		// https://my.hidrive.com/client/authorize
+		// ?client_id=a7ff922a897cfde20473f1b8d01b42a9
+		// &lang=de
+		// &redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fhidrive%2Fauth%2Fauthcode
+		// &response_type=code
+		// &scope=user%2Crw
+		// &state=#login
+
+	case "auth":
+		// d.manager.ServeHTTP(w, r)
+		head, tail := shiftPath(path)
+
+		switch head {
+
+		case "authorize":
+			clientAuthURL := d.manager.GetClientAuthorizeURL(strings.TrimPrefix(tail, "/"), r.URL.Query().Get("next"))
+			enc.Encode(map[string]string{"url": clientAuthURL})
+			// http.Redirect(w, r, clientAuthURL, 302)
+
+		case "authcode":
+			// HandleAuthorizeCallback verarbeitet die Weiterleitung nach erfolgtem authorize
+			// sollte unter  https://ihle.cloud/hidrive-token-callback erreichbar sein
+			key := r.URL.Query().Get("state")
+			fmt.Println("authcode:", key)
+			if code, ok := r.URL.Query()["code"]; ok {
+				fmt.Println("code", code, ok)
+				_, err := d.manager.AddAuth(key, code[0])
+				if err != nil {
+					fmt.Printf("error => %+v\n", err)
+					fmt.Fprintf(w, "error => %+v\n", err)
+				}
+				// p.writeTokenFile()
+
+				next := r.URL.Query().Get("next")
+				if next == "" {
+					next = "/hidrive/auth"
+				}
+				fmt.Println("code", code, ok, next)
+				fmt.Fprintf(w, `<head><meta http-equiv="Refresh" content="0; URL=%s"></head>`, next)
+
+			}
+		case "refresh":
+			key := strings.TrimPrefix(tail, "/")
+			d.manager.Refresh(key, false)
+
+		default:
+
+			if key, found := r.URL.Query()["refresh"]; found {
+				d.manager.Refresh(key[0], false)
+			}
+
+			// t, err := template.ParseFS(templates, "hdhandler/templates/*.html")
+			// if err != nil {
+			// 	fmt.Fprintf(w, "Cannot parse templates: %v", err)
+			// 	return
+			// }
+			enc.Encode(map[string]interface{}{
+				"ClientID":     d.manager.clientID,
+				"ClientSecret": d.manager.clientSecret,
+				"tokens":       d.manager.authmap,
+			})
+
+		}
 	default:
 
 		// meta, err = d.Stream(r.URL.Path, token)
 		meta, err = d.GetMeta(r.URL.Path, token)
-
 	}
 
 	switch {
@@ -158,174 +193,52 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), code)
 
 	case meta != nil:
-		enc.Encode(meta)
-	}
-}
-
-func (d *Drive) MetaHandler(w http.ResponseWriter, r *http.Request) {
-
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000") //r.Header.Get("Origin"))
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-	path, accessToken := d.credentials(r)
-	if accessToken == "" {
-		http.Error(w, errors.NewWithCode(401, "Couldn‘t get valid auth token").Error(), http.StatusUnauthorized)
-		return
-	}
-
-	fmt.Println("drive.MetaHandler", r.URL.Path, path, accessToken, d.prefix)
-
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "    ")
-
-	// head, tail := shiftPath(r.URL.Path)
-
-	var err error
-	var meta *Meta
-
-	var wg sync.WaitGroup
-	var dir *Meta
-	var direrr error
-
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-		dir, direrr = d.client.GetDir(path, "", "", 0, 0, "", "", accessToken)
-	}()
-
-	meta, err = d.client.GetMeta(path, "", "", accessToken)
-	if err != nil {
-		http.Error(w, errors.Wrap(err, "Couldn‘t get meta").Error(), 500)
-		return
-	}
-	// if meta.Path == "/users/matt.ihle" {
-	// 	meta.Path = "/"
-	// 	meta.NameURLEncoded = "home"
-	// }
-	// if strings.HasPrefix(meta.Path, "/users/matt.ihle") {
-	// 	meta.Path = strings.TrimPrefix(meta.Path, "/users/matt.ihle")
-	// }
-	if d.prefix != "" {
-		meta.Path = strings.TrimPrefix(meta.Path, d.prefix)
-	}
-	fmt.Println("meta.Path = ", meta.Path, d.prefix)
-
-	if meta.Filetype == "dir" {
-		wg.Wait()
-		if direrr != nil {
-			http.Error(w, errors.Wrap(err, "Couldn‘t get dir").Error(), 500)
-			return
-		}
-		meta.Members = dir.Members
-		for i, m := range meta.Members {
-			// fmt.Println("meta handler -> dir", m.NameURLEncoded, m.Name())
-
-			// if meta.Members[i].Path == "/users/matt.ihle" {
-			// 	meta.Members[i].Path = "/"
-			// }
-			// if strings.HasPrefix(meta.Members[i].Path, "/users/matt.ihle") {
-			// 	meta.Members[i].Path = strings.TrimPrefix(meta.Members[i].Path, "/users/matt.ihle")
-			// }
-			meta.Members[i].NameURLEncoded = m.Name()
-			// unescapedName, _ := url.QueryUnescape(m.NameURLEncoded)
-			// m.NameURLEncoded = unescapedName
-			if d.prefix != "" {
-				meta.Members[i].Path = strings.TrimPrefix(m.Path, d.prefix)
-			}
-		}
-	}
-
-	switch {
-
-	case err != nil:
-		code := errors.Code(err)
-		if code == 65535 {
-			code = 500
-		}
-		http.Error(w, err.Error(), code)
-
-	case meta != nil:
-		enc.Encode(meta)
-	}
-}
-
-func (d *Drive) DirHandlerDeprecated(w http.ResponseWriter, r *http.Request) {
-
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000") //r.Header.Get("Origin"))
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-	path, accessToken := d.credentials(r)
-	if accessToken == "" {
-		http.Error(w, errors.NewWithCode(401, "Couldn‘t get valid auth token").Error(), http.StatusUnauthorized)
-		return
-	}
-
-	fmt.Println("drive.DirHandler", r.URL.Path, path, accessToken)
-
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "    ")
-
-	// head, tail := shiftPath(r.URL.Path)
-
-	var err error
-	var meta *Meta
-
-	switch r.Method {
-	case http.MethodGet:
-		meta, err = d.client.GetDir(path, "", "", 0, 0, "", "", accessToken)
-
-	case http.MethodPost:
-		meta, err = d.client.PostDir(path, "", "", 0, 0, accessToken)
-
-	case http.MethodDelete:
-		params := url.Values{"path": {path}, "recursive": {"true"}}
-		_, err = d.client.Request("DELETE", "/dir", params, nil, accessToken)
-	}
-
-	switch {
-
-	case err != nil:
-		code := errors.Code(err)
-		if code == 65535 {
-			code = 500
-		}
-		http.Error(w, err.Error(), code)
-
-	case meta != nil:
-		for _, m := range meta.Members {
-			// m.Path = ""
-			m.NameURLEncoded = m.Name()
-			unescapedName, _ := url.QueryUnescape(m.NameURLEncoded)
-			m.NameURLEncoded = unescapedName
-		}
+		// for _, m := range meta.Members {
+		// 	// m.Path = ""
+		// 	m.NameURLEncoded = m.Name()
+		// 	unescapedName, _ := url.QueryUnescape(m.NameURLEncoded)
+		// 	m.NameURLEncoded = unescapedName
+		// }
 		enc.Encode(meta)
 	}
 }
 
 func (d *Drive) ThumbHandler(w http.ResponseWriter, r *http.Request) {
-	path, accessToken := d.credentials(r)
-	params := r.URL.Query()
-	params.Set("path", path)
-	//url.Values{"pid": {tail[1:]}})
 
-	body, err := d.client.Request("GET", "/file/thumbnail", params, nil, accessToken)
+	token := d.Token(r.Context().Value("username").(string))
+	if token == nil {
+		http.Error(w, "Couldn‘t get valid auth token", http.StatusUnauthorized)
+		return
+	}
+
+	params := r.URL.Query()
+	params.Set("path", d.fullpath(r.URL.Path, token.Alias))
+
+	body, err := d.client.Request("GET", "/file/thumbnail", params, nil, token.AccessToken)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 	defer body.Close()
+
 	_, err = io.Copy(w, body)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+	}
 }
 
 func (d *Drive) Serve(w http.ResponseWriter, r *http.Request) {
 
-	path, accessToken := d.credentials(r)
+	token := d.Token(r.Context().Value("username").(string))
+	if token == nil {
+		http.Error(w, "Couldn‘t get valid auth token", http.StatusUnauthorized)
+		return
+	}
 
 	params := r.URL.Query()
-	params.Set("path", path)
+	params.Set("path", d.fullpath(r.URL.Path, token.Alias))
 
-	body, err := d.client.Request("GET", "/file", params, nil, accessToken)
+	body, err := d.client.Request("GET", "/file", params, nil, token.AccessToken)
 	if err != nil {
 		http.Error(w, err.Error(), errors.Code(err))
 		return
@@ -334,23 +247,26 @@ func (d *Drive) Serve(w http.ResponseWriter, r *http.Request) {
 
 	_, err = io.Copy(w, body)
 	if err != nil {
-		http.Error(w, err.Error(), errors.Code(err))
+		http.Error(w, err.Error(), 500)
 	}
 }
 
 func (d *Drive) FileContent(w http.ResponseWriter, r *http.Request) {
 
-	_, accessToken := d.credentials(r)
+	token := d.Token(r.Context().Value("username").(string))
+	if token == nil {
+		http.Error(w, "Couldn‘t get valid auth token", http.StatusUnauthorized)
+		return
+	}
 
-	dir, file := path.Split(r.URL.Path)
-	fmt.Println("asdf", dir, file)
+	dir, file := path.Split(d.fullpath(r.URL.Path, token.Alias))
+
 	params := r.URL.Query()
 	params.Set("dir", strings.TrimRight(dir, "/"))
 	params.Set("name", file)
 
-	body, err := d.client.Request("PUT", "/file", params, r.Body, accessToken)
+	body, err := d.client.Request("PUT", "/file", params, r.Body, token.AccessToken)
 	if err != nil {
-
 		http.Error(w, err.Error(), errors.Code(err))
 		return
 	}
@@ -370,24 +286,21 @@ func (d *Drive) FileContent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), errors.Code(err))
 		return
 	}
-
 }
 
-//go:embed hdhandler/templates/*
+//go:embed templates/*
 var templates embed.FS
 
+// ServeHTTP has 3 modes:
+// 1) GET without params shows a button calling ServeHTTP with the authorize param
+//    and a form POSTing ServeHTTP with a code
+// 2) GET with authorize param redirects to the hidrive /client/authorize endpoint where a user can authorize the app.
+//    This endpoint will call registered token-callback which is not reachable locally ( => copy code and use form from 1)
+// 3) POSTing username and code triggering oauth2/token endpoint generating an access token
 func (m *AuthManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-	// claims, _, err := auth.GetClaims(r)
-	// token, err := m.GetAuthToken(claims.Username)
-
-	// if token == nil || err != nil {
-	// 	http.Error(w, errors.NewWithCode(401, "Couldn‘t get valid auth token for authuser %q", claims.Username).Error(), 401)
-	// 	return
-	// }
 
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "    ")
@@ -397,6 +310,7 @@ func (m *AuthManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch head {
 
 	case "authorize":
+		// clientAuthURL := m.GetClientAuthorizeURL(r.URL.Query().Get("state"), r.URL.Query().Get("next"))
 		key := strings.TrimPrefix(tail, "/")
 		clientAuthURL := m.GetClientAuthorizeURL(key, r.URL.Query().Get("next"))
 		http.Redirect(w, r, clientAuthURL, 302)
@@ -443,4 +357,25 @@ func (m *AuthManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		t.ExecuteTemplate(w, "tokenmgmt.html", map[string]interface{}{"ClientID": m.clientID, "ClientSecret": m.clientSecret, "tokens": m.authmap})
 		return
 	}
+}
+
+func (m *AuthManager) AuthTokenCallback(w http.ResponseWriter, r *http.Request) {
+
+	key := r.URL.Query().Get("state")
+	code := r.URL.Query().Get("code")
+
+	_, err := m.AddAuth(key, code)
+	if err != nil {
+		fmt.Printf("error => %+v\n", err)
+		fmt.Fprintf(w, "error => %+v\n", err)
+	}
+	// p.writeTokenFile()
+
+	next := r.URL.Query().Get("next")
+	if next == "" {
+		next = "/hidrive/auth"
+	}
+
+	fmt.Fprintf(w, `<head><meta http-equiv="Refresh" content="0; URL=%s"></head>`, next)
+
 }

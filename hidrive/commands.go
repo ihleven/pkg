@@ -36,7 +36,7 @@ func (d *Drive) GetMeta(drivepath string, token *AuthToken) (*Meta, error) {
 	}
 	defer body.Close()
 
-	meta, err := d.parse(body)
+	meta, err := d.processMetaResponse(body)
 	// meta, err := d.client.GetMeta(fullpath, "", "", token.AccessToken)
 	if err != nil {
 		return nil, errors.Wrap(err, "")
@@ -182,7 +182,7 @@ func (d *Drive) CreateFile(drivepath string, body io.Reader, name string, modtim
 	}
 	defer response.Close()
 
-	return d.parse(response)
+	return d.processMetaResponse(response)
 }
 func (d *Drive) Save(drivepath string, body io.Reader, token *AuthToken) (*Meta, error) {
 

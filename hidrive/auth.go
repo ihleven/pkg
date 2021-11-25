@@ -25,8 +25,6 @@ func NewAuthManager(id, secret string) *AuthManager {
 		panic(fmt.Sprintf("%+v", err))
 	}
 
-	fmt.Println("NewAuthManager:", mgmt.authmap)
-
 	return &mgmt
 }
 
@@ -41,12 +39,23 @@ type AuthManager struct {
 	clientSecret string           `json:"-"`
 }
 
+// Auth enthält alle Daten, die im AuthManager für einen key gespeichert werden.
+type Auth struct {
+	UserID    string           `json:"userid"`
+	Alias     string           `json:"alias"`
+	Scope     string           `json:"scope"`
+	Token     *OAuth2Token     `json:"token"`
+	Info      *OAuth2TokenInfo `json:"info"`
+	ExpiresAt time.Time        `json:"expiry,omitempty"`
+	// RefreshExpiry time.Time        `json:"-"`
+}
+
 func (a *AuthManager) Client() *OAuth2Client {
 	return a.oauthClient
 }
 
 func (m *AuthManager) GetClientAuthorizeURL(state, next string) string {
-	fmt.Println("GAETASEFASDFASDFASDFSDF")
+
 	redirectURI := "http://localhost:8000/hidrive/auth/authcode"
 	if next != "" {
 		redirectURI += "?next=" + next
@@ -65,7 +74,7 @@ func (m *AuthManager) GetClientAuthorizeURL(state, next string) string {
 }
 
 func (m *AuthManager) GetAccessToken(key string) (*AuthToken, error) {
-	fmt.Println("GetAccessToken")
+	fmt.Print("GetAccessToken")
 	m.Lock()
 	defer m.Unlock()
 	auth, ok := m.authmap[key]
@@ -77,7 +86,6 @@ func (m *AuthManager) GetAccessToken(key string) (*AuthToken, error) {
 	switch {
 	case remaining < 1:
 		// abgelaufen, blocking refresh
-		fmt.Println("GetAccessToken -> blocking refresh")
 		new, err := m.oauthClient.RefreshToken(auth.Token.RefreshToken)
 		if err != nil {
 			return nil, errors.Wrap(err, "Error refresh")
@@ -85,43 +93,16 @@ func (m *AuthManager) GetAccessToken(key string) (*AuthToken, error) {
 		auth.Token = new
 		auth.ExpiresAt = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
 		m.writeTokenFile()
-
+		fmt.Println(" -> blocking refresh", auth.ExpiresAt)
 	// case remaining < 5:
 	// fast abgelaufen, refresh im Hintergrund und altes Token direkt zurückgeben
 
 	default:
 		// Token gültig und wirdzurückgeben
-		fmt.Println("GetAccessToken OK")
+		fmt.Println(" -> OK")
 	}
 
 	return &AuthToken{auth.Token.AccessToken, auth.Alias}, nil
-}
-
-func (m *AuthManager) GetTokenDeprecated(key string) (*OAuth2Token, error) { //<-chan string {
-	m.Lock()
-	defer m.Unlock()
-	if auth, ok := m.authmap[key]; ok {
-		remaining := time.Until(auth.ExpiresAt).Minutes()
-		fmt.Printf("GetAuthToken(%s) -> %fmin: %v\n", key, remaining, auth)
-		if remaining < 1 {
-			fmt.Println("refreshing access token!!!")
-			new, err := m.oauthClient.RefreshToken(auth.Token.RefreshToken)
-			if err != nil {
-				return nil, errors.NewWithCode(401, err.Error())
-			}
-			return new, nil
-
-			auth.Token = new
-			auth.ExpiresAt = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
-			// m.authmap[key] = auth
-			m.writeTokenFile()
-			fmt.Printf("new accessToken expires at %v\n", auth.ExpiresAt)
-		}
-
-		return auth.Token, nil
-	}
-
-	return nil, errors.NewWithCode(401, "no token")
 }
 
 func (m *AuthManager) Refresh(key string, withoutLock bool) (*OAuth2Token, error) {
@@ -152,36 +133,6 @@ func (m *AuthManager) Refresh(key string, withoutLock bool) (*OAuth2Token, error
 type AuthToken struct {
 	AccessToken string
 	Alias       string
-}
-
-func (m *AuthManager) GetAuthToken(key string) (*AuthToken, error) { //<-chan string {
-	m.Lock()
-	defer m.Unlock()
-	if auth, ok := m.authmap[key]; ok {
-		remaining := time.Until(auth.ExpiresAt).Minutes()
-		// fmt.Printf("GetAuthToken(%s) -> %fmin: %v\n", key, remaining, auth)
-		if remaining < 1 {
-			// fmt.Println("refreshing access token!!!")
-			access, err := m.Refresh(key, true)
-			if err != nil {
-				return nil, errors.NewWithCode(401, err.Error())
-			}
-			return &AuthToken{access.AccessToken, auth.Alias}, nil
-			// new, err := m.oauthClient.RefreshToken(auth.Token.RefreshToken)
-			// if err != nil {
-			// 	return nil, errors.NewWithCode(401, err.Error())
-			// }
-			// auth.Token = new
-			// auth.ExpiresAt = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
-			// m.authmap[key] = auth
-			// m.writeTokenFile()
-			// fmt.Printf("new accessToken expires at %v\n", auth.ExpiresAt)
-		}
-
-		return &AuthToken{auth.Token.AccessToken, auth.Alias}, nil
-	}
-
-	return nil, errors.NewWithCode(401, "no token")
 }
 
 func (m *AuthManager) AddAuth(key, code string) (*Auth, error) {
@@ -237,24 +188,4 @@ func (m *AuthManager) writeTokenFile() error {
 		return err
 	}
 	return nil
-}
-
-func (m *AuthManager) GetAuth(key string) *Auth {
-	m.Lock()
-	defer m.Unlock()
-	if auth, ok := m.authmap[key]; ok {
-		return auth //&AuthToken{auth.Token.AccessToken, auth.Alias}, nil
-	}
-	return nil //, errors.NewWithCode(401, "no token")
-}
-
-// Auth enthält alle Daten, die im AuthManager für einen key gespeichert werden.
-type Auth struct {
-	UserID    string           `json:"userid"`
-	Alias     string           `json:"alias"`
-	Scope     string           `json:"scope"`
-	Token     *OAuth2Token     `json:"token"`
-	Info      *OAuth2TokenInfo `json:"info"`
-	ExpiresAt time.Time        `json:"expiry,omitempty"`
-	// RefreshExpiry time.Time        `json:"-"`
 }
