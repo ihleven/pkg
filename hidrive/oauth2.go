@@ -35,10 +35,10 @@ type OAuth2Client struct {
 	clientID, clientSecret string
 }
 
-// OAuth2Token is the payload of a hidrive token returned by POST /oauth2/token request
+// Token is the payload of a hidrive token returned by POST /oauth2/token request
 // AccessToken is used for api requests
 // RefreshToken is used to renew abgelaufene tokens
-type OAuth2Token struct {
+type Token struct {
 	// TokenType is the type of token.
 	// The Type method returns either this or "Bearer", the default.
 	TokenType string `json:"token_type,omitempty"`
@@ -54,7 +54,7 @@ type OAuth2Token struct {
 
 // GenerateToken allows you to retrieve a new refresh_token following initial “code” flow authorization.
 // wraps hidrive POST /oauth2/token request.
-func (c *OAuth2Client) GenerateToken(code string) (*OAuth2Token, error) {
+func (c *OAuth2Client) GenerateToken(code string) (*Token, error) {
 
 	params := url.Values{
 		"client_id":     {c.clientID},
@@ -73,7 +73,7 @@ func (c *OAuth2Client) GenerateToken(code string) (*OAuth2Token, error) {
 		return nil, NewOAuth2Error(response)
 	}
 
-	var token OAuth2Token
+	var token Token
 	err = json.NewDecoder(response.Body).Decode(&token)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to decode response")
@@ -82,7 +82,7 @@ func (c *OAuth2Client) GenerateToken(code string) (*OAuth2Token, error) {
 }
 
 // RefreshToken may be used to generate a valid access_token anytime, using an existing and valid refresh_token.
-func (c *OAuth2Client) RefreshToken(refreshtoken string) (*OAuth2Token, error) {
+func (c *OAuth2Client) RefreshToken(refreshtoken string) (*Token, error) {
 
 	params := url.Values{
 		"client_id":     {c.clientID},
@@ -101,7 +101,7 @@ func (c *OAuth2Client) RefreshToken(refreshtoken string) (*OAuth2Token, error) {
 		return nil, NewOAuth2Error(response)
 	}
 
-	var token OAuth2Token
+	var token Token
 	err = json.NewDecoder(response.Body).Decode(&token)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to decode response")

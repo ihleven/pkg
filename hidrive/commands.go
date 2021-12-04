@@ -11,7 +11,7 @@ import (
 )
 
 // GetMeta concurrently retrieves file and folder meta data
-func (d *Drive) GetMeta(drivepath string, token *AuthToken) (*Meta, error) {
+func (d *Drive) GetMeta(drivepath string, token *Token) (*Meta, error) {
 
 	fullpath := d.fullpath(drivepath, token.Alias)
 
@@ -60,7 +60,7 @@ func (d *Drive) GetMeta(drivepath string, token *AuthToken) (*Meta, error) {
 // Meta gibt ein Meta-Objekt für den übergeben Drive-Pfad zurück
 // TODO: Berechtigungen prüfen
 //
-func (d *Drive) Meta(drivepath string, token *AuthToken) (*Meta, error) {
+func (d *Drive) Meta(drivepath string, token *Token) (*Meta, error) {
 
 	fullpath := d.fullpath(drivepath, token.Alias)
 
@@ -100,7 +100,7 @@ func (d *Drive) Meta(drivepath string, token *AuthToken) (*Meta, error) {
 	return meta, nil
 }
 
-func (d *Drive) Mkdir(drivepath string, token *AuthToken) (*Meta, error) {
+func (d *Drive) Mkdir(drivepath string, token *Token) (*Meta, error) {
 
 	fullpath := d.fullpath(drivepath, token.Alias)
 
@@ -112,7 +112,7 @@ func (d *Drive) Mkdir(drivepath string, token *AuthToken) (*Meta, error) {
 	return dir, nil
 }
 
-func (d *Drive) Listdir(drivepath string, token *AuthToken) ([]Meta, error) {
+func (d *Drive) Listdir(drivepath string, token *Token) ([]Meta, error) {
 
 	params := url.Values{
 		"path":    {d.fullpath(drivepath, token.Alias)},
@@ -138,7 +138,7 @@ func (d *Drive) Listdir(drivepath string, token *AuthToken) ([]Meta, error) {
 	return dir.Members, nil
 }
 
-func (d *Drive) Rmdir(drivepath string, token *AuthToken) error {
+func (d *Drive) Rmdir(drivepath string, token *Token) error {
 
 	params := url.Values{
 		"path":      {d.fullpath(drivepath, token.Alias)},
@@ -153,7 +153,7 @@ func (d *Drive) Rmdir(drivepath string, token *AuthToken) error {
 	return nil
 }
 
-func (d *Drive) Rm(drivepath string, token *AuthToken) error {
+func (d *Drive) Rm(drivepath string, token *Token) error {
 
 	params := url.Values{
 		"path": {d.fullpath(drivepath, token.Alias)},
@@ -167,7 +167,7 @@ func (d *Drive) Rm(drivepath string, token *AuthToken) error {
 	return nil
 }
 
-func (d *Drive) CreateFile(drivepath string, body io.Reader, name string, modtime string, token *AuthToken) (*Meta, error) {
+func (d *Drive) CreateFile(drivepath string, body io.Reader, name string, modtime string, token *Token) (*Meta, error) {
 	params := url.Values{
 		"dir":      {d.fullpath(drivepath, token.Alias)},
 		"name":     {name},
@@ -184,7 +184,7 @@ func (d *Drive) CreateFile(drivepath string, body io.Reader, name string, modtim
 
 	return d.processMetaResponse(response)
 }
-func (d *Drive) Save(drivepath string, body io.Reader, token *AuthToken) (*Meta, error) {
+func (d *Drive) Save(drivepath string, body io.Reader, token *Token) (*Meta, error) {
 
 	dir, file := path.Split(d.fullpath(drivepath, token.Alias))
 	// dir = strings.TrimSuffix(dir, "/")

@@ -10,11 +10,11 @@ import (
 )
 
 // NewDrive creates a new hidrive
-func NewDrive(clientID, clientSecret string, opts ...DriveOption) *Drive {
+func NewDrive(manager *AuthManager, opts ...DriveOption) *Drive {
 
 	var d = &Drive{
 		client:  NewClient(),
-		manager: NewAuthManager(clientID, clientSecret),
+		manager: manager,
 		// prefix:  "",
 		// homes:    map[string]string{"matt": "/users/matt.ihle"},
 		confmap: make(map[string]config),
@@ -136,7 +136,7 @@ func (d *Drive) processMetaResponse(response io.Reader) (*Meta, error) {
 // 	return d.fullpath(r.URL.Path, token.Alias), token.AccessToken
 // }
 
-func (d *Drive) Token(authkey string) *AuthToken {
+func (d *Drive) Token(authkey string) *Token {
 	token, err := d.manager.GetAccessToken(authkey)
 	if err != nil {
 		return nil

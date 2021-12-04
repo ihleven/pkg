@@ -1,7 +1,6 @@
 package hidrive
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +9,6 @@ import (
 	"path"
 	gopath "path"
 	"strings"
-	"text/template"
 
 	"github.com/ihleven/errors"
 )
@@ -32,13 +30,14 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var (
-		err  error
-		meta *Meta
-		body io.ReadCloser
-	)
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "    ")
+
+	var (
+		meta *Meta
+		body io.ReadCloser
+		err  error
+	)
 
 	head, path := shiftPath(r.URL.Path)
 
@@ -48,7 +47,8 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// fullpath := d.fullpath(r.URL.Path, token.Alias)
 		switch r.Method {
 		case http.MethodGet:
-			meta, err = d.Meta(d.fullpath(path, token.Alias), token)
+			meta, err = d.Meta(path, token)
+
 		case http.MethodPut:
 			dir, file := gopath.Split(d.fullpath(path, token.Alias))
 			dir = strings.TrimSuffix(dir, "/")
@@ -57,7 +57,7 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "dir":
-		fullpath := d.fullpath(r.URL.Path, token.Alias)
+		fullpath := d.fullpath(path, token.Alias)
 
 		switch r.Method {
 		case http.MethodGet:
@@ -74,7 +74,67 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// err = d.Rmdir(tail, claims.Username)
 		}
 
+	case "file":
+		switch r.Method {
+		case http.MethodGet:
+			body, err = d.client.Request("GET", "/file", url.Values{"path": {d.fullpath(path, token.Alias)}}, nil, token.AccessToken)
+			if err == nil {
+				defer body.Close()
+				_, err = io.Copy(w, body)
+			}
+
+		case http.MethodPost:
+			// create
+			dir, name := gopath.Split(d.fullpath(path, token.Alias))
+			params := url.Values{
+				"dir_id":   r.URL.Query()["dir_id"],
+				"dir":      {strings.TrimRight(dir, "/")},
+				"name":     {name},
+				"on_exist": {"autoname"}, // Find another name if the destination already exists.
+				//        mtime, Type: int The modification time (mtime) of the file system target to be set after the operation.
+				// parent_mtime, Type: int The modification time (mtime) of the file system target's parent folder to be set after the operation.
+			}
+			fmt.Println(params)
+			body, err = d.client.Request("POST", "/file", params, r.Body, token.AccessToken)
+			if err == nil {
+				defer body.Close()
+				meta, err = d.processMetaResponse(body)
+			} else {
+				fmt.Println("post file error:", err)
+			}
+
+		case "PUT":
+			dir, file := gopath.Split(d.fullpath(path, token.Alias))
+			body, err = d.client.Request("PUT", "/file", url.Values{"dir": {strings.TrimRight(dir, "/")}, "name": {file}}, r.Body, token.AccessToken)
+			if err == nil {
+				defer body.Close()
+				meta, err = d.processMetaResponse(body)
+			}
+
+		// case "PATCH":
+
+		case http.MethodDelete:
+			err = d.Rm(path, token)
+		}
+
 	case "files":
+		switch r.Method {
+		case http.MethodPost:
+			// create
+			params := url.Values{
+				"dir_id":   r.URL.Query()["dir_id"],
+				"name":     {path[1:]},
+				"on_exist": {"autoname"}, // Find another name if the destination already exists.
+			}
+			fmt.Println(params)
+			body, err = d.client.Request("POST", "/file", params, r.Body, token.AccessToken)
+			if err == nil {
+				defer body.Close()
+				meta, err = d.processMetaResponse(body)
+			} else {
+				fmt.Println("post file error:", err)
+			}
+		}
 
 		body, err = d.client.Request("GET", "/file", url.Values{"pid": {path[1:]}}, nil, token.AccessToken)
 		if err == nil {
@@ -101,7 +161,7 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_, err = io.Copy(w, body)
 		}
 
-	case "info":
+	case "tokeninfo":
 		info, err := d.manager.oauthClient.TokenInfo(token.AccessToken)
 		if err == nil {
 			enc.Encode(info)
@@ -109,74 +169,9 @@ func (d *Drive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "authorize":
-		clientAuthURL := d.manager.GetClientAuthorizeURL(path[1:], r.URL.Query().Get("next"))
-		http.Redirect(w, r, clientAuthURL, 302)
-		fmt.Fprintf(w, "%s", clientAuthURL)
-		fmt.Printf("%s", clientAuthURL)
+		d.manager.AuthorizeURL(w, r)
+		return
 
-		// https://my.hidrive.com/client/authorize
-		// ?client_id=a7ff922a897cfde20473f1b8d01b42a9
-		// &lang=de
-		// &redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fhidrive%2Fauth%2Fauthcode
-		// &response_type=code
-		// &scope=user%2Crw
-		// &state=#login
-
-	case "auth":
-		// d.manager.ServeHTTP(w, r)
-		head, tail := shiftPath(path)
-
-		switch head {
-
-		case "authorize":
-			clientAuthURL := d.manager.GetClientAuthorizeURL(strings.TrimPrefix(tail, "/"), r.URL.Query().Get("next"))
-			enc.Encode(map[string]string{"url": clientAuthURL})
-			// http.Redirect(w, r, clientAuthURL, 302)
-
-		case "authcode":
-			// HandleAuthorizeCallback verarbeitet die Weiterleitung nach erfolgtem authorize
-			// sollte unter  https://ihle.cloud/hidrive-token-callback erreichbar sein
-			key := r.URL.Query().Get("state")
-			fmt.Println("authcode:", key)
-			if code, ok := r.URL.Query()["code"]; ok {
-				fmt.Println("code", code, ok)
-				_, err := d.manager.AddAuth(key, code[0])
-				if err != nil {
-					fmt.Printf("error => %+v\n", err)
-					fmt.Fprintf(w, "error => %+v\n", err)
-				}
-				// p.writeTokenFile()
-
-				next := r.URL.Query().Get("next")
-				if next == "" {
-					next = "/hidrive/auth"
-				}
-				fmt.Println("code", code, ok, next)
-				fmt.Fprintf(w, `<head><meta http-equiv="Refresh" content="0; URL=%s"></head>`, next)
-
-			}
-		case "refresh":
-			key := strings.TrimPrefix(tail, "/")
-			d.manager.Refresh(key, false)
-
-		default:
-
-			if key, found := r.URL.Query()["refresh"]; found {
-				d.manager.Refresh(key[0], false)
-			}
-
-			// t, err := template.ParseFS(templates, "hdhandler/templates/*.html")
-			// if err != nil {
-			// 	fmt.Fprintf(w, "Cannot parse templates: %v", err)
-			// 	return
-			// }
-			enc.Encode(map[string]interface{}{
-				"ClientID":     d.manager.clientID,
-				"ClientSecret": d.manager.clientSecret,
-				"tokens":       d.manager.authmap,
-			})
-
-		}
 	default:
 
 		// meta, err = d.Stream(r.URL.Path, token)
@@ -288,58 +283,41 @@ func (d *Drive) FileContent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-//go:embed templates/*
-var templates embed.FS
-
 // ServeHTTP has 3 modes:
 // 1) GET without params shows a button calling ServeHTTP with the authorize param
 //    and a form POSTing ServeHTTP with a code
-// 2) GET with authorize param redirects to the hidrive /client/authorize endpoint where a user can authorize the app.
+// 2) GET with authorize/{username} param redirects to the hidrive /client/authorize endpoint where a user {username} can authorize the app.
 //    This endpoint will call registered token-callback which is not reachable locally ( => copy code and use form from 1)
 // 3) POSTing username and code triggering oauth2/token endpoint generating an access token
 func (m *AuthManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "    ")
 
 	head, tail := shiftPath(r.URL.Path)
-
 	switch head {
 
 	case "authorize":
-		// clientAuthURL := m.GetClientAuthorizeURL(r.URL.Query().Get("state"), r.URL.Query().Get("next"))
-		key := strings.TrimPrefix(tail, "/")
-		clientAuthURL := m.GetClientAuthorizeURL(key, r.URL.Query().Get("next"))
-		http.Redirect(w, r, clientAuthURL, 302)
+		r.URL.Path = tail
+		m.AuthorizeURL(w, r)
+		return
 
 	case "authcode":
-		// HandleAuthorizeCallback verarbeitet die Weiterleitung nach erfolgtem authorize
-		// sollte unter  https://ihle.cloud/hidrive-token-callback erreichbar sein
-		key := r.URL.Query().Get("state")
-		fmt.Println("authcode:", key)
-		if code, ok := r.URL.Query()["code"]; ok {
-			fmt.Println("code", code, ok)
-			_, err := m.AddAuth(key, code[0])
-			if err != nil {
-				fmt.Printf("error => %+v\n", err)
-				fmt.Fprintf(w, "error => %+v\n", err)
-			}
-			// p.writeTokenFile()
+		r.URL.Path = tail
+		m.HandleAuthorizeCallback(w, r)
+		return
 
-			next := r.URL.Query().Get("next")
-			if next == "" {
-				next = "/hidrive/auth"
-			}
-			fmt.Println("code", code, ok, next)
-			fmt.Fprintf(w, `<head><meta http-equiv="Refresh" content="0; URL=%s"></head>`, next)
-
-		}
 	case "refresh":
-		key := strings.TrimPrefix(tail, "/")
-		m.Refresh(key, false)
+		r.URL.Path = tail
+		m.RefreshHandler(w, r)
+		return
+
+	case "keys":
+		switch r.Method {
+		case "DELETE":
+			m.DelAuth(tail[1:])
+			enc.Encode(m.authmap)
+		}
 
 	default:
 
@@ -347,35 +325,71 @@ func (m *AuthManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			m.Refresh(key[0], false)
 		}
 
-		t, err := template.ParseFS(templates, "hdhandler/templates/*.html")
-		if err != nil {
-			fmt.Fprintf(w, "Cannot parse templates: %v", err)
-			return
-		}
-
-		w.WriteHeader(200)
-		t.ExecuteTemplate(w, "tokenmgmt.html", map[string]interface{}{"ClientID": m.clientID, "ClientSecret": m.clientSecret, "tokens": m.authmap})
+		enc.Encode(m.authmap)
 		return
 	}
 }
 
-func (m *AuthManager) AuthTokenCallback(w http.ResponseWriter, r *http.Request) {
+func (m *AuthManager) AuthorizeURL(w http.ResponseWriter, r *http.Request) {
+	// https://my.hidrive.com/client/authorize
+	// ?client_id=a7ff922a897cfde20473f1b8d01b42a9
+	// &lang=de
+	// &redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fhidrive%2Fauth%2Fauthcode
+	// &response_type=code
+	// &scope=user%2Crw
+	// &state=#login
+
+	username, _ := shiftPath(r.URL.Path)
+
+	params := url.Values{
+		"client_id":     {m.clientID},
+		"response_type": {"code"},
+		"scope":         {"user,rw"},
+		"lang":          {"de"},     // optional: language in which the authorization page is shown
+		"state":         {username}, // optional:
+		"redirect_uri":  {"http://localhost:8000/hidrive/auth/authcode?next=" + r.URL.Query().Get("next")},
+	}
+
+	w.Write([]byte("https://my.hidrive.com/client/authorize?" + params.Encode()))
+
+	// enc := json.NewEncoder(w)
+	// enc.SetIndent("", "    ")
+	// enc.Encode(map[string]string{
+	// 	"username": username,
+	// 	"url":      m.GetClientAuthorizeURL(username),
+	// })
+}
+
+func (m *AuthManager) HandleAuthorizeCallback(w http.ResponseWriter, r *http.Request) {
 
 	key := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
+	next := r.URL.Query().Get("next")
 
 	_, err := m.AddAuth(key, code)
 	if err != nil {
 		fmt.Printf("error => %+v\n", err)
 		fmt.Fprintf(w, "error => %+v\n", err)
 	}
-	// p.writeTokenFile()
 
-	next := r.URL.Query().Get("next")
 	if next == "" {
 		next = "/hidrive/auth"
 	}
-
+	// w.Write([]byte(next))
 	fmt.Fprintf(w, `<head><meta http-equiv="Refresh" content="0; URL=%s"></head>`, next)
+}
 
+func (m *AuthManager) RefreshHandler(w http.ResponseWriter, r *http.Request) {
+
+	authkey, _ := shiftPath(r.URL.Path)
+	fmt.Println("authkey:", authkey)
+	token, err := m.Refresh(authkey, false)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "    ")
+	enc.Encode(token)
 }

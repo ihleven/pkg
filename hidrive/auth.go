@@ -3,7 +3,6 @@ package hidrive
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -41,47 +40,19 @@ type AuthManager struct {
 
 // Auth enthält alle Daten, die im AuthManager für einen key gespeichert werden.
 type Auth struct {
-	UserID    string           `json:"userid"`
-	Alias     string           `json:"alias"`
-	Scope     string           `json:"scope"`
-	Token     *OAuth2Token     `json:"token"`
-	Info      *OAuth2TokenInfo `json:"info"`
-	ExpiresAt time.Time        `json:"expiry,omitempty"`
-	// RefreshExpiry time.Time        `json:"-"`
+	Token  *Token    `json:"token"`
+	Expiry time.Time `json:"expiry,omitempty"`
 }
 
-func (a *AuthManager) Client() *OAuth2Client {
-	return a.oauthClient
-}
+func (m *AuthManager) GetAccessToken(key string) (*Token, error) {
 
-func (m *AuthManager) GetClientAuthorizeURL(state, next string) string {
-
-	redirectURI := "http://localhost:8000/hidrive/auth/authcode"
-	if next != "" {
-		redirectURI += "?next=" + next
-	}
-
-	params := url.Values{
-		"client_id":     {m.clientID},
-		"response_type": {"code"},
-		"scope":         {"user,rw"},
-		"lang":          {"de"},  // optional: language in which the authorization page is shown
-		"state":         {state}, // optional:
-		"redirect_uri":  {redirectURI},
-	}
-
-	return "https://my.hidrive.com/client/authorize?" + params.Encode()
-}
-
-func (m *AuthManager) GetAccessToken(key string) (*AuthToken, error) {
-	fmt.Print("GetAccessToken")
 	m.Lock()
 	defer m.Unlock()
 	auth, ok := m.authmap[key]
 	if !ok || auth == nil {
 		return nil, errors.NewWithCode(401, "Unknown auth key")
 	}
-	remaining := time.Until(auth.ExpiresAt).Minutes()
+	remaining := time.Until(auth.Expiry).Minutes()
 
 	switch {
 	case remaining < 1:
@@ -91,21 +62,21 @@ func (m *AuthManager) GetAccessToken(key string) (*AuthToken, error) {
 			return nil, errors.Wrap(err, "Error refresh")
 		}
 		auth.Token = new
-		auth.ExpiresAt = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
+		auth.Expiry = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
 		m.writeTokenFile()
-		fmt.Println(" -> blocking refresh", auth.ExpiresAt)
+		fmt.Println(" -> blocking refresh", auth.Expiry)
 	// case remaining < 5:
 	// fast abgelaufen, refresh im Hintergrund und altes Token direkt zurückgeben
 
 	default:
 		// Token gültig und wirdzurückgeben
-		fmt.Println(" -> OK")
+		fmt.Println(" -> OK", remaining, auth.Expiry)
 	}
 
-	return &AuthToken{auth.Token.AccessToken, auth.Alias}, nil
+	return auth.Token, nil
 }
 
-func (m *AuthManager) Refresh(key string, withoutLock bool) (*OAuth2Token, error) {
+func (m *AuthManager) Refresh(key string, withoutLock bool) (*Token, error) {
 	if !withoutLock {
 		m.Lock()
 		defer m.Unlock()
@@ -123,16 +94,11 @@ func (m *AuthManager) Refresh(key string, withoutLock bool) (*OAuth2Token, error
 	// fmt.Println("new:", new.AccessToken, new.RefreshToken, err)
 
 	auth.Token = new
-	auth.ExpiresAt = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
+	auth.Expiry = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
 	m.authmap[key] = auth
 	m.writeTokenFile()
 
 	return auth.Token, nil
-}
-
-type AuthToken struct {
-	AccessToken string
-	Alias       string
 }
 
 func (m *AuthManager) AddAuth(key, code string) (*Auth, error) {
@@ -143,11 +109,8 @@ func (m *AuthManager) AddAuth(key, code string) (*Auth, error) {
 	}
 
 	auth := Auth{
-		UserID:    token.UserID,
-		Alias:     token.Alias,
-		Scope:     token.Scope,
-		Token:     token,
-		ExpiresAt: time.Now().Add(time.Second * time.Duration(token.ExpiresIn)),
+		Token:  token,
+		Expiry: time.Now().Add(time.Second * time.Duration(token.ExpiresIn)),
 	}
 
 	m.Lock()
@@ -155,6 +118,14 @@ func (m *AuthManager) AddAuth(key, code string) (*Auth, error) {
 	m.authmap[key] = &auth
 	m.writeTokenFile()
 	return &auth, nil
+}
+
+func (m *AuthManager) DelAuth(key string) error {
+	m.Lock()
+	defer m.Unlock()
+	delete(m.authmap, key)
+	m.writeTokenFile()
+	return nil
 }
 
 func readAuthMapFromFile() (map[string]*Auth, error) {
