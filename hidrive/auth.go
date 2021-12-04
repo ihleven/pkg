@@ -1,107 +1,162 @@
 package hidrive
 
 import (
+	"encoding/json"
 	"fmt"
-	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/ihleven/errors"
 )
 
-type OAuth2Prov struct {
-	// config    AppConfig    `json:"-"`
-	client    *http.Client `json:"-"`
-	tokenFile string       `json:"-"`
-	// tokens    map[string]Token     `json:"-"`
-	// deadlines map[string]time.Time `json:"-"`
+// NewTokenManager constructs an auth provider
+func NewAuthManager(id, secret string) *AuthManager {
 
-	mu sync.Mutex // guards cache
-	// cache  map[string]*entry
-	tokens map[string]*tokenmgmt
+	mgmt := AuthManager{
+		clientID:     id,
+		clientSecret: secret,
+		oauthClient:  NewOAuth2Client(id, secret),
+	}
+	var err error
+	mgmt.authmap, err = readAuthMapFromFile()
+	if err != nil {
+		panic(fmt.Sprintf("%+v", err))
+	}
+
+	return &mgmt
 }
 
-type tokenmgmt struct {
-	*Token
-	sync.RWMutex
-	err      error
-	deadline time.Time
-	ready    chan struct{} // closed when res is ready
+// AuthManager verwaltet auth-Daten für angemeldete user.
+// Annahme: user-Anmeldungen werden außerhalb validiert. Übergebene authkeys sind authorisiert.
+// Zur Kommunikation mit der HiDrive-APi wird ein OAuth2Client verwendet
+type AuthManager struct {
+	sync.Mutex
+	authmap      map[string]*Auth `json:"-"`
+	oauthClient  *OAuth2Client    `json:"-"`
+	clientID     string           `json:"-"`
+	clientSecret string           `json:"-"`
 }
 
-func (p *OAuth2Prov) GetAccessToken(key string) (string, error) {
-	p.mu.Lock()
-	mgmt, ok := p.tokens[key]
-	p.mu.Unlock()
-	fmt.Printf("GetAccessToken => %+v\n", mgmt)
+// Auth enthält alle Daten, die im AuthManager für einen key gespeichert werden.
+type Auth struct {
+	Token  *Token    `json:"token"`
+	Expiry time.Time `json:"expiry,omitempty"`
+}
 
-	if !ok {
-		return "", errors.New("no mgmt entry for key %s", key)
+func (m *AuthManager) GetAccessToken(key string) (*Token, error) {
+
+	m.Lock()
+	defer m.Unlock()
+	auth, ok := m.authmap[key]
+	if !ok || auth == nil {
+		return nil, errors.NewWithCode(401, "Unknown auth key")
 	}
+	remaining := time.Until(auth.Expiry).Minutes()
 
-	if mgmt == nil {
-		return "", errors.New("empty mgmt entry for key %s", key)
-	}
-
-	remaining := mgmt.deadline.Sub(time.Now()).Minutes()
-
-	// fmt.Printf(" ***************** %v -> %v **************\n\n\n", time.Now(), mgmt.deadline)
-	if remaining <= 0 {
-		p.mu.Lock()
-		// refresh and wait for result
-		// newmgmt, err := p.RefreshMgmt(mgmt)
-		// if err == nil {
-		// 	p.tokens[key] = newmgmt
-		// 	mgmt = newmgmt
-		// 	remaining = mgmt.deadline.Sub(time.Now()).Minutes()
-		// 	p.mu.Unlock()
-		// 	return mgmt.AccessToken, nil
-		// } else {
-		// 	p.mu.Unlock()
-		// 	return "", errors.Wrap(err, "unable to refresh")
-		// }
-	}
-
-	if remaining > 0 {
-		if remaining < 10 {
-			// fmt.Printf(" ***************** triggering refesh: %s -> %f **************\n", key, remaining)
-			// refresh token in background
-			go func(mgmt *tokenmgmt) {
-				// newmgmt, err := p.RefreshMgmt(mgmt)
-				// if err == nil {
-				// 	p.mu.Lock()
-				// 	p.tokens[key] = newmgmt
-				// 	mgmt = newmgmt
-				// 	remaining = mgmt.deadline.Sub(time.Now()).Minutes()
-				// 	p.mu.Unlock()
-				// } else {
-				// 	log.Fatal("failed token refesh")
-				// }
-			}(mgmt)
+	switch {
+	case remaining < 1:
+		// abgelaufen, blocking refresh
+		new, err := m.oauthClient.RefreshToken(auth.Token.RefreshToken)
+		if err != nil {
+			return nil, errors.Wrap(err, "Error refresh")
 		}
-		return mgmt.AccessToken, nil
+		auth.Token = new
+		auth.Expiry = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
+		m.writeTokenFile()
+		fmt.Println(" -> blocking refresh", auth.Expiry)
+	// case remaining < 5:
+	// fast abgelaufen, refresh im Hintergrund und altes Token direkt zurückgeben
+
+	default:
+		// Token gültig und wirdzurückgeben
+		fmt.Println(" -> OK", remaining, auth.Expiry)
 	}
 
-	return "", errors.New("Could not retrieve access token for key %s", key)
+	return auth.Token, nil
 }
 
-type Token struct {
-	// AccessToken is the token that authorizes and authenticates the requests.
-	AccessToken string `json:"access_token"`
-	// TokenType is the type of token.
-	// The Type method returns either this or "Bearer", the default.
-	TokenType string `json:"token_type,omitempty"`
-	// RefreshToken is a token that's used by the application (as opposed to the user) to refresh the access token if it expires.
-	RefreshToken string `json:"refresh_token,omitempty"`
+func (m *AuthManager) Refresh(key string, withoutLock bool) (*Token, error) {
+	if !withoutLock {
+		m.Lock()
+		defer m.Unlock()
+	}
 
-	ExpiresIn int    `json:"expires_in"`
-	UserID    string `json:"userid"`
-	Alias     string `json:"alias"`
-	// Expiry is the optional expiration time of the access token.
-	//
-	// If zero, TokenSource implementations will reuse the same
-	// token forever and RefreshToken or equivalent
-	// mechanisms for that TokenSource will not be used.
-	// Expiry time.Time `json:"expiry,omitempty"`
-	Scope string
+	auth, ok := m.authmap[key]
+	if !ok || auth == nil {
+		return nil, errors.NewWithCode(401, "Unknown auth key")
+	}
+	new, err := m.oauthClient.RefreshToken(auth.Token.RefreshToken)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error refresh")
+	}
+	fmt.Printf(" -> refreshing token %s => %s\n", auth.Token.AccessToken, new.AccessToken)
+	// fmt.Println("new:", new.AccessToken, new.RefreshToken, err)
+
+	auth.Token = new
+	auth.Expiry = time.Now().Add(time.Second * time.Duration(new.ExpiresIn))
+	m.authmap[key] = auth
+	m.writeTokenFile()
+
+	return auth.Token, nil
+}
+
+func (m *AuthManager) AddAuth(key, code string) (*Auth, error) {
+
+	token, err := m.oauthClient.GenerateToken(code)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error generating token")
+	}
+
+	auth := Auth{
+		Token:  token,
+		Expiry: time.Now().Add(time.Second * time.Duration(token.ExpiresIn)),
+	}
+
+	m.Lock()
+	defer m.Unlock()
+	m.authmap[key] = &auth
+	m.writeTokenFile()
+	return &auth, nil
+}
+
+func (m *AuthManager) DelAuth(key string) error {
+	m.Lock()
+	defer m.Unlock()
+	delete(m.authmap, key)
+	m.writeTokenFile()
+	return nil
+}
+
+func readAuthMapFromFile() (map[string]*Auth, error) {
+
+	authmap := make(map[string]*Auth)
+
+	bytes, err := os.ReadFile("hidrive.mgmt")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return authmap, nil //errors.Wrap(err, "")
+		}
+		return nil, errors.Wrap(err, "failed to read token file")
+	}
+
+	if err := json.Unmarshal(bytes, &authmap); err != nil {
+		return nil, errors.Wrap(err, "error parsing token")
+	}
+	fmt.Printf("readTokenFile() => %v\n", authmap)
+
+	return authmap, nil
+}
+
+func (m *AuthManager) writeTokenFile() error {
+
+	bytes, err := json.MarshalIndent(m.authmap, "", "    ")
+	if err != nil {
+		return errors.Wrap(err, "error marshaling authmap")
+	}
+	err = os.WriteFile("hidrive.mgmt", bytes, 0664)
+	if err != nil {
+		return err
+	}
+	return nil
 }

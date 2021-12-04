@@ -18,6 +18,7 @@ func NewFS(prefix, token string) *FS {
 	}
 }
 
+// FS ist immer an ein konkretes auth-Token gebunden und hat einen fixen Pfad-Prefix
 type FS struct {
 	client *HiDriveClient
 	prefix string

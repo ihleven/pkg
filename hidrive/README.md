@@ -1,8 +1,11 @@
 # HiDrive
 
-## media
+client: low-level http Zugriff auf die HiDrive-Api. Bekommt volle Pfade und AccessTokens übergeben.
+drive: Wrapper um client, der den Zugriff auf Unterverzeichnisse beschränkt (Drive-Pfad). Bekommt authkey, über den aus dem Drive-Pfad der HiDrive-Pfad berechnet und das AccessToken ermittelt wird. Dazu verwaltet das Drive einen authManager, der über authkeys Tokens anfordern und erneuern kann.
+fs: Wrapper um client mit fixem Unterpfad und fixem AccessToken, der das fs.FS und fs.DirFS Interface erfüllt.
 
-Unter /media/ ist ein hidrive-Drive für den (lesenden) Zugriff auf den share/dir /wolfgang-ihle gemountet
+
+
 
 
 ## Drive-Handler
@@ -43,7 +46,9 @@ type Drive interface{
 
 ### hidrive.Client
 
-Zugriff auf die hidrive-Endpunkte
+client für die HiDriveApi. handhabt Kommunikation mit Api
+
+Zugriff auf die hidrive-Endpunkte:
 * Parameter spiegeln Endpunkt-Parameter 1:1
 * bekommt Zugiffstokens übergeben
 * gibt die hidrive-Endpunkt-Rückgabe 1:1 weiter
@@ -55,12 +60,8 @@ Zugriff auf die hidrive-Endpunkte
 
 ### Client
 
-client für die HiDriveApi. handhabt Kommunikation mit Api
 
 
-
-
-Es gibt Funktionen für Dir, File, Meta, die Pfade nehmen und ReadCloser zurückliefern
 
 
 Handler kann dann entweder den Stream direkt zurückliefern oder nochmals parsen und 
@@ -140,6 +141,13 @@ Die Pfade haben keinen filespezifischen Prefix, sondern es wird aus dem Pfad erm
 Templates können dabei für Filetypen registiert werden. Dir und File sind Pflicht, für spezielle Filetypen können aber eigene Templates hinterlegt werden (Image, Markdown)
 
 
+# Auth
 
+Mit jedem Request steckt im Context ein username 
+
+Dieser username liefert über eine Map ein Authentifikationsobjekt.
+
+
+Dieses Authentifikationsobjekt enthält das token soie die Lebensdauer 
 
 
