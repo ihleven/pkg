@@ -152,7 +152,7 @@ func (rou *router) Dispatch(r *http.Request) (*route, map[string]interface{}, in
 }
 
 func (rou *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("ServeHTTP")
+
 	var allow []string
 
 	for _, route := range rou.routes {
