@@ -20,9 +20,9 @@ type dispatcher struct {
 	preserve bool
 }
 
-func (r *dispatcher) PreservePath(preserve bool) *dispatcher {
+func (r *dispatcher) PreservePath() *dispatcher {
 
-	r.preserve = preserve
+	r.preserve = true
 	return r
 }
 
@@ -34,7 +34,7 @@ func (r *dispatcher) Name(name string) *dispatcher {
 
 func (r *dispatcher) Register(path string, handler http.Handler) *dispatcher {
 
-	head, tail := shiftPath(path)
+	head, tail := ShiftPath(path)
 
 	switch {
 	case path == "/":
@@ -42,7 +42,7 @@ func (r *dispatcher) Register(path string, handler http.Handler) *dispatcher {
 		r.handler = handler
 		return r
 	case tail == "/":
-		// child route
+		// child route: head != ""
 		r.children[head] = NewDispatcher(handler, path[1:]) // {children: make(map[string]*dispatcher), handler: handler}
 		return r.children[head]
 
@@ -55,21 +55,18 @@ func (r *dispatcher) Register(path string, handler http.Handler) *dispatcher {
 	}
 }
 
-func (d *dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	d.handler.ServeHTTP(w, r)
-}
+func (d *dispatcher) Dispatch(route string) (*dispatcher, string) {
 
-func (d *dispatcher) GetDispatcher(route string) (*dispatcher, string) {
-
-	head, tail := shiftPath(route)
+	head, tail := ShiftPath(route)
 
 	if disp, ok := d.children[head]; ok {
-		return disp.GetDispatcher(tail)
+		return disp.Dispatch(tail)
 	}
+
 	return d, route
 }
 
-func shiftPath(p string) (head, tail string) {
+func ShiftPath(p string) (head, tail string) {
 	p = path.Clean("/" + p)
 	i := strings.Index(p[1:], "/") + 1
 	if i <= 0 {

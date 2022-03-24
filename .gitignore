@@ -21,3 +21,4 @@ pkg
 pkg-linux
 icloud
 cmd/cmd
+tmp.log
