@@ -10,68 +10,40 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type logger interface {
-	Debug(format string, args ...interface{})
-	Info(format string, args ...interface{})
-	Error(err error, format string, args ...interface{})
-	// Fatal(err error, format string, args ...interface{})
-}
+// type logger interface {
+// 	Debug(format string, args ...interface{})
+// 	Info(format string, args ...interface{})
+// 	Error(err error, format string, args ...interface{})
+// 	// Fatal(err error, format string, args ...interface{})
+// }
 
 // https://pmihaylov.com/go-structured-logs/
 
-func NewZapRequestLogger2() *zap.Logger {
-	cfg := zap.Config{
-		Encoding:         "json",
-		Level:            zap.NewAtomicLevelAt(zapcore.InfoLevel),
-		OutputPaths:      []string{"stdout"},
-		ErrorOutputPaths: []string{"stderr"},
-		EncoderConfig: zapcore.EncoderConfig{
-			MessageKey: "request",
-
-			LevelKey:    "level",
-			EncodeLevel: zapcore.CapitalLevelEncoder,
-
-			TimeKey: "time",
-			// EncodeTime: zapcore.ISO8601TimeEncoder,
-
-			// CallerKey:    "caller",
-			// EncodeCaller: zapcore.ShortCallerEncoder,
-
-			EncodeTime:     zapcore.ISO8601TimeEncoder,
-			EncodeDuration: zapcore.StringDurationEncoder,
-			// EncodeDuration: zapcore.MillisDurationEncoder,
-		},
-	}
-
-	l, err := cfg.Build()
-	if err != nil {
-		return nil
-	}
-
-	return l
-}
 func NewZapRequestLogger(f *os.File) *zap.Logger {
-	// highPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
-	// 	return lvl >= zapcore.ErrorLevel
-	// })
-	// lowPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
-	// 	return lvl < zapcore.ErrorLevel
-	// })
-	// topicDebugging := zapcore.AddSync(ioutil.Discard)
-	// topicErrors := zapcore.AddSync(ioutil.Discard)
-	// consoleDebugging := zapcore.Lock(os.Stdout)
-	// consoleErrors := zapcore.Lock(os.Stderr)
 
-	// jsonEncoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
-	// consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
+	encoderConfig := zapcore.EncoderConfig{
+		MessageKey: "request",
 
-	pe := zap.NewProductionEncoderConfig()
-	pe.EncodeTime = zapcore.ISO8601TimeEncoder
+		LevelKey:    "level",
+		EncodeLevel: zapcore.CapitalLevelEncoder,
 
-	fileEncoder := zapcore.NewJSONEncoder(pe)
-	consoleEncoder := zapcore.NewConsoleEncoder(pe)
+		TimeKey: "time",
+		// EncodeTime: zapcore.ISO8601TimeEncoder,
 
-	level := zap.InfoLevel
+		CallerKey:    "caller",
+		EncodeCaller: zapcore.ShortCallerEncoder,
+
+		EncodeTime:     zapcore.ISO8601TimeEncoder,
+		EncodeDuration: zapcore.StringDurationEncoder,
+		// EncodeDuration: zapcore.MillisDurationEncoder,
+	}
+	encoderConfig = zap.NewProductionEncoderConfig()
+	encoderConfig = zap.NewDevelopmentEncoderConfig()
+
+	fileEncoder := zapcore.NewJSONEncoder(encoderConfig)
+	consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
+
+	level := zap.InfoLevel // zap.NewAtomicLevelAt(zapcore.InfoLevel)
 
 	core := zapcore.NewTee(
 		zapcore.NewCore(fileEncoder, zapcore.AddSync(f), level),
@@ -80,8 +52,10 @@ func NewZapRequestLogger(f *os.File) *zap.Logger {
 
 	logger := zap.New(core)
 	defer logger.Sync()
+
 	return logger
 }
+
 func (s *httpServer) LogRequest(r *http.Request, id string, reqnum uint64, start time.Time, rw *ResponseWriter, name string) {
 
 	duration := time.Since(start)
@@ -99,7 +73,8 @@ func (s *httpServer) LogRequest(r *http.Request, id string, reqnum uint64, start
 		zap.String("proto", r.Proto),
 		zap.String("handler", name),
 		zap.String("method", r.Method),
-		zap.String("endpoint", r.URL.Path),
+		zap.String("handlerpath", r.URL.Path),
+		zap.String("authkey", rw.Authkey),
 		zap.Any("query", r.URL.Query()),
 		zap.Duration("duration", duration),
 		zap.Uint64("size", rw.count),
@@ -107,7 +82,11 @@ func (s *httpServer) LogRequest(r *http.Request, id string, reqnum uint64, start
 	}
 	if rw.err != nil {
 		// fields = append(fields, zap.Error(fmt.Errorf("Inbound request failed with status %d", rw.statusCode)))
-		fields = append(fields, zap.Error(rw.err))
+		// fields = append(fields, zap.Error(rw.err))
+		fields = append(fields, zap.Any("err", rw.err))
+	}
+	if rw.RuntimeStack != nil {
+		fields = append(fields, zap.ByteString("runtimeStack", rw.RuntimeStack))
 	}
 	if rw.statusCode >= 400 {
 		s.requestLogger.Error("", fields...)

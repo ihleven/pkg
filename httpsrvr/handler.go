@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"runtime"
 	"sync/atomic"
 	"time"
 
-	"github.com/ihleven/errors"
+	"github.com/fatih/color"
+	"github.com/ihleven/pkg/errors"
 )
 
 type requestid struct{}
@@ -22,9 +24,10 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reqid = fmt.Sprintf("%s-%d", s.instance, reqnum)
 	}
 
+	color.Cyan("request %d: %s %s\n", reqnum, reqid, r.URL.Path)
+
 	ctx := context.WithValue(r.Context(), requestid{}, reqid)
-	// ctx = context.WithValue(ctx, "counter", reqnum)
-	// ctx = context.WithValue(ctx, "debug", s.debug)
+
 	r = r.WithContext(ctx)
 
 	rw := NewResponseWriter(w, s.debug, s.debug)
@@ -33,32 +36,41 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// if !route.preserve {
 	r.URL.Path = tail
 	// }
+	if route.OptionParseRequestAuth != nil {
+		rw.Authkey = route.OptionParseRequestAuth.ParseRequestAuth(r)
+	}
 
 	// The key point to note is that the 'f()' in 'defer f()' is not executed when the defer statement executes
 	// but the expression 'e' in 'defer f(e)' is evaluated when the defer statement executes.
-	defer s.LogRequest(r, reqid, reqnum, start, rw, route.Name)
+	defer func() {
+		if err := recover(); err != nil {
+			buf := make([]byte, 2048)
+			n := runtime.Stack(buf, false)
+			rw.RuntimeStack = buf[:n]
+			if e, ok := err.(error); ok {
 
-	// TODO: kann das durch route.ServeHTTP ersetzt werdem?!?
+				wrappederr := errors.Wrap(e, "our server got panic")
+				rw.RespondError(wrappederr)
+			} else {
+
+				// fmt.Printf("recovering from err %v\n %s", err, buf)
+				msg := fmt.Sprintf("our server got panic -> %s", err)
+				w.Write([]byte(msg))
+			}
+		}
+		s.LogRequest(r, reqid, reqnum, start, rw, route.Name)
+	}()
+
+	// defer s.LogRequest(r, reqid, reqnum, start, rw, route.Name)
+
+	// TODO: kann das durch route.DispatchAndServe ersetzt werden?!?
 	if handler, ok := route.Handler[r.Method]; ok {
 		handler.ServeHTTP(rw, r)
+	} else if handler, ok := route.Handler[""]; ok && handler != nil {
+		handler.ServeHTTP(rw, r)
 	} else {
-		route.Handler[""].ServeHTTP(rw, r)
+		http.Error(rw, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 	}
-
-	// var err error
-
-	// switch h := route.handler.(type) {
-	// case ResponseWriterErrorHandlerFunc:
-	// 	err = h(rw, r)
-	// case ErrorHandlerFunc:
-	// 	err = h(rw, r)
-	// default:
-	// route.handler.ServeHTTP(rw, r)
-	// }
-
-	// if err != nil {
-	// 	rw.HandleError(err)
-	// }
 }
 
 func ConvertHandlerType(customhandler interface{}) (http.Handler, error) {

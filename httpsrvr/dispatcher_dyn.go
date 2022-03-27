@@ -1,7 +1,6 @@
 package httpsrvr
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"regexp"
@@ -11,9 +10,9 @@ import (
 )
 
 func NewShiftPathRouter(handler http.Handler, name string) *ShiftPathRoute {
-	if handler == nil {
-		handler = http.NotFoundHandler()
-	}
+	// if handler == nil {
+	// 	handler = http.HandlerFunc(MethodNotAllowed)
+	// }
 	return &ShiftPathRoute{
 		Name:    name,
 		Handler: map[string]http.Handler{"": handler},
@@ -26,6 +25,8 @@ type ShiftPathRoute struct {
 	Handler  map[string]http.Handler
 	PathMap  map[string]*ShiftPathRoute
 	RegexMap map[*regexp.Regexp]*ShiftPathRoute
+	// OptionAuth       bool
+	OptionParseRequestAuth authParser
 }
 
 func (d *ShiftPathRoute) getRegexSubRoute(head string) (*ShiftPathRoute, bool) {
@@ -45,11 +46,32 @@ func (d *ShiftPathRoute) getRegexSubRoute(head string) (*ShiftPathRoute, bool) {
 		d.RegexMap = make(map[*regexp.Regexp]*ShiftPathRoute)
 	}
 
-	// Eintrag anlegen
-	if _, ok := d.RegexMap[regex]; !ok {
-		d.RegexMap[regex] = NewShiftPathRouter(nil, head)
+	// Eintrag suchen und zurückgeben.
+	// Das der Key ein regexptr ist müssen wir hier die Stringrepräsentation aller keys vergleichen
+	for regexkey, route := range d.RegexMap {
+		if regexkey.String() == regex.String() {
+			return route, true
+		}
 	}
+	// Nur Eintrag anlegen wenn nicht gefunden
+	d.RegexMap[regex] = NewShiftPathRouter(nil, head)
 	return d.RegexMap[regex], true
+}
+
+func (d *ShiftPathRoute) GET(path string, h interface{}) *ShiftPathRoute {
+	return d.Register(http.MethodGet, path, h)
+}
+func (d *ShiftPathRoute) POS(path string, h interface{}) *ShiftPathRoute {
+	return d.Register(http.MethodPost, path, h)
+}
+func (d *ShiftPathRoute) PUT(path string, h interface{}) *ShiftPathRoute {
+	return d.Register(http.MethodPut, path, h)
+}
+func (d *ShiftPathRoute) PAT(path string, h interface{}) *ShiftPathRoute {
+	return d.Register(http.MethodPatch, path, h)
+}
+func (d *ShiftPathRoute) DEL(path string, h interface{}) *ShiftPathRoute {
+	return d.Register(http.MethodDelete, path, h)
 }
 
 func (d *ShiftPathRoute) Register(method, path string, h interface{}) *ShiftPathRoute {
@@ -69,7 +91,6 @@ func (d *ShiftPathRoute) Register(method, path string, h interface{}) *ShiftPath
 	}
 
 	if subEntry, isRegex := d.getRegexSubRoute(head); isRegex {
-
 		if tail == "/" {
 			subEntry.Handler[method] = handler
 			return subEntry
@@ -84,8 +105,13 @@ func (d *ShiftPathRoute) Register(method, path string, h interface{}) *ShiftPath
 		d.PathMap[head].Handler[method] = handler
 		return d.PathMap[head]
 	} else {
-		return d.PathMap[head].Register(method, tail, handler)
+		return d.PathMap[head].Register(method, tail, handler).SetName(path)
 	}
+}
+
+func (r *ShiftPathRoute) SetName(name string) *ShiftPathRoute {
+	r.Name = name
+	return r
 }
 
 //
@@ -102,7 +128,6 @@ func (d *ShiftPathRoute) Dispatch(route string, params map[string]string) (*Shif
 		for regex, disp := range d.RegexMap {
 
 			matches := regex.FindStringSubmatch(head) // oder route ???
-			fmt.Println("matches:", matches, regex.SubexpNames(), params)
 			if matches == nil {
 				continue
 			}
@@ -112,7 +137,6 @@ func (d *ShiftPathRoute) Dispatch(route string, params map[string]string) (*Shif
 					params[name] = matches[i]
 				}
 			}
-			fmt.Println("matches:", matches, regex.SubexpNames(), params)
 
 			return disp.Dispatch(tail, params)
 		}
@@ -121,13 +145,27 @@ func (d *ShiftPathRoute) Dispatch(route string, params map[string]string) (*Shif
 	return d, route
 }
 
+func (d *ShiftPathRoute) GetHandler(method string) http.Handler {
+	if handler, ok := d.Handler[method]; ok {
+		return handler
+	} else if handler, ok := d.Handler[""]; ok && handler != nil {
+		return handler
+	}
+
+	return nil
+}
+
 func (d *ShiftPathRoute) ServeHTTPsrvr(rw *ResponseWriter, r *http.Request) {
 
 	route, _ := d.Dispatch(r.URL.Path, rw.Params)
 
-	if handler, ok := route.Handler[r.Method]; ok {
+	if handler := route.GetHandler(r.Method); handler != nil {
 		handler.ServeHTTP(rw, r)
 	} else {
-		route.Handler[""].ServeHTTP(rw, r)
+		http.Error(rw, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 	}
+}
+
+func MethodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 }

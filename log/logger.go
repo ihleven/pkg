@@ -6,7 +6,6 @@ import (
 
 	"github.com/fatih/color"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type Level int
@@ -31,18 +30,6 @@ func NewLogger(level Level) *Logger {
 	return &Logger{
 		Level:     level,
 		zapLogger: zl,
-	}
-}
-
-func NewZapLogger() *Logger {
-	l, _ := zap.Config{
-		Encoding:    "json",
-		Level:       zap.NewAtomicLevelAt(zapcore.DebugLevel),
-		OutputPaths: []string{"stdout"},
-	}.Build()
-	return &Logger{
-		Level:     DEBUG,
-		zapLogger: l,
 	}
 }
 

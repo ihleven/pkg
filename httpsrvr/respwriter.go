@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/ihleven/pkg/errors"
@@ -18,7 +19,9 @@ type ResponseWriter struct {
 	statusCode    int
 	// status int
 	// length int
-	err error
+	Authkey      string
+	err          error
+	RuntimeStack []byte
 }
 
 // NewResponseWriter wraps given http.ResponseWriter in a ResponseWriter overwriting the WriteHeader method
@@ -26,7 +29,7 @@ func NewResponseWriter(w http.ResponseWriter, debug, pretty bool) *ResponseWrite
 
 	routeparams := make(map[string]string)
 
-	return &ResponseWriter{w, debug, pretty, routeparams, 0, 0, nil}
+	return &ResponseWriter{w, debug, pretty, routeparams, 0, 0, "", nil, nil}
 }
 
 // Write captures the response size
@@ -51,46 +54,63 @@ func (rw *ResponseWriter) Count() uint64 {
 	return atomic.LoadUint64(&rw.count)
 }
 
-//
-func (rw *ResponseWriter) RespondJSON(data interface{}) {
+// IntParamErr
+func (rw *ResponseWriter) IntParamErr(key string) (int, error) {
+	return strconv.Atoi(rw.Params[key])
+}
 
-	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
-	var bytes []byte
-	var err error
-	if rw.pretty {
-		bytes, err = json.MarshalIndent(data, "", "    ")
-	} else {
-		bytes, err = json.Marshal(data)
-	}
+// IntParam
+func (rw *ResponseWriter) IntParam(key string) int {
+	i, _ := strconv.Atoi(rw.Params[key])
+	return i
+}
+
+//
+func (rw *ResponseWriter) Respond(data interface{}, err error) {
 
 	if err != nil {
 		rw.RespondError(err)
 		return
 	}
+	err = rw.RespondJSON(data)
+	if err != nil {
+		rw.RespondError(err)
+	}
+}
+
+func (rw *ResponseWriter) RespondJSON(data interface{}) error {
+
+	var (
+		bytes []byte
+		err   error
+	)
+
+	if rw.pretty {
+		bytes, err = json.MarshalIndent(data, "", "    ")
+	} else {
+		bytes, err = json.Marshal(data)
+	}
+	if err != nil {
+		// rw.RespondError(err)
+		return errors.Wrap(err, "Failed to marshal response")
+	}
+
+	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
 	rw.Write(bytes)
+	return nil
 }
 
 func (rw *ResponseWriter) RespondError(err error) {
 
+	// set error for logging
 	rw.err = err
 
-	var code int
-
-	type coder interface{ Code() int }
-	if errWithCode, ok := err.(coder); ok {
-		code = errWithCode.Code()
-	}
-
-	if code == 0 {
-		code = 500
-	}
-
-	rw.WriteHeader(code)
+	code := errors.Code(err)
 
 	if rw.debug {
-		http.Error(rw, fmt.Sprintf("%+v", err), code)
+		http.Error(rw, fmt.Sprintf("%#v", err), code)
 	} else {
-		http.Error(rw, fmt.Sprintf("%v", errors.Cause(err)), code)
+		http.Error(rw, fmt.Sprintf("%s", errors.Cause(err)), code)
 	}
 
 }

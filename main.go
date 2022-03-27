@@ -1,15 +1,20 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"net/http"
+	"text/template"
 	"time"
 
 	"github.com/ihleven/pkg/errors"
 	"github.com/ihleven/pkg/httpsrvr"
+	"github.com/ihleven/pkg/log"
 )
 
 func main() {
+
+	// log.Setup()
 
 	srv := httpsrvr.NewServer(8001, true)
 
@@ -34,7 +39,12 @@ func main() {
 	srv.Register("/country/(?P<country>[0-9]+$)/(?P<region>^[0-9]+$)", dynhandler)
 	// srv.Register("/nested/:code/region/:region/aasdf", dynhandler)
 	srv.Register("/kunst/", KunstAPI(true))
+	srv.Register("/login", LoginFormHandler)
 
+	// log.Errorf(nil, " === test logErrorf === %s %d", "id", 78)
+	// log.Debugf(" === test log.Infof === %d %s", 17, "wach")
+	log.Info(" === test log.Info:", log.Err(errors.New("pkgerr")))
+	log.Info("test log.Info:", log.Int("number", 17), log.Str("hallo", "wach"))
 	srv.Run()
 }
 
@@ -96,13 +106,30 @@ func accomhandler(w *httpsrvr.ResponseWriter, r *http.Request, p map[string]stri
 
 func KunstAPI(debug bool) httpsrvr.ResponseWriterErrorHandlerFunc {
 
-	apirtr := httpsrvr.NewShiftPathRouter(nil, "root")
+	apirtr := httpsrvr.NewShiftPathRouter(http.NotFoundHandler(), "root")
 	apirtr.Register("GET", "/bilder/(?P<id>[0-9]+$)", func(w *httpsrvr.ResponseWriter, r *http.Request, p map[string]string) error {
 		// fmt.Fprintln(w, "exec", r.URL.Path, p)
-		return errors.New("asdfasdfasdfasdfasf")
+		// return errors.New("asdfasdfasdfasdfasf")
+		return fmt.Errorf("neuer Fejler")
 	})
 
 	return func(rw *httpsrvr.ResponseWriter, r *http.Request) error {
-		return errors.Wrap(errors.New("asdfasdfasdfasdfasf"), "asdf")
+		// return errors.Wrap(errors.New("asdfasdfasdfasdfasf"), "asdf")
+		return fmt.Errorf("neuer Fejler")
 	}
+}
+
+//go:embed templates/*
+var templates embed.FS
+
+func LoginFormHandler(w http.ResponseWriter, r *http.Request) {
+
+	t, err := template.ParseFS(templates, "templates/*.html")
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	w.WriteHeader(200)
+	t.ExecuteTemplate(w, "login.html", nil)
 }

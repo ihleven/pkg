@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ihleven/pkg/httpauth"
 	"github.com/ihleven/pkg/log"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
@@ -27,13 +28,14 @@ func NewServer(port int, debug bool, options ...Option) *httpServer {
 	}
 	host := ""
 	srvr := &httpServer{
-		addr:          fmt.Sprintf("%s:%d", host, port),
-		routes:        NewShiftPathRouter(nil, "root"),
-		debug:         debug,
-		startedAt:     start,
-		instance:      start.Format("060102-150405"),
-		logger:        nil,
+		addr:      fmt.Sprintf("%s:%d", host, port),
+		routes:    NewShiftPathRouter(http.NotFoundHandler(), "root"),
+		debug:     debug,
+		startedAt: start,
+		instance:  start.Format("060102-150405"),
+		// logger:        nil,
 		requestLogger: NewZapRequestLogger(fd),
+		// carrier:       httpauth.NewCookieCarrier([]byte("my_secret_key")),
 	}
 	for _, opt := range options {
 		opt(srvr)
@@ -42,17 +44,18 @@ func NewServer(port int, debug bool, options ...Option) *httpServer {
 }
 
 type httpServer struct {
-	server        *http.Server
-	routes        *ShiftPathRoute
-	addr          string
-	debug         bool
-	systemd       bool
-	limiter       *rate.Limiter
-	instance      string
-	counter       uint64
-	startedAt     time.Time
-	logger        logger
+	server    *http.Server
+	routes    *ShiftPathRoute
+	addr      string
+	debug     bool
+	systemd   bool
+	limiter   *rate.Limiter
+	instance  string
+	counter   uint64
+	startedAt time.Time
+	// logger        logger
 	requestLogger *zap.Logger
+	auth          *httpauth.Auth
 }
 
 type Option func(*httpServer)
@@ -63,11 +66,11 @@ func Port(port int) func(srvr *httpServer) {
 	}
 }
 
-func Logger(logger logger) func(srvr *httpServer) {
-	return func(srvr *httpServer) {
-		srvr.logger = logger
-	}
-}
+// func Logger(logger logger) func(srvr *httpServer) {
+// 	return func(srvr *httpServer) {
+// 		srvr.logger = logger
+// 	}
+// }
 
 // SetLimit enables rate limiting that allows events up to rate r and permits bursts of at most b tokens.
 func SetLimit(r float64, bursts int) func(srvr *httpServer) {
@@ -80,6 +83,13 @@ func SetLimit(r float64, bursts int) func(srvr *httpServer) {
 func WithSystemd(enabled bool) func(srvr *httpServer) {
 	return func(srvr *httpServer) {
 		srvr.systemd = enabled
+	}
+}
+
+// WithSystemd enables or disables systemd mode
+func WithAuth(auth *httpauth.Auth) func(srvr *httpServer) {
+	return func(srvr *httpServer) {
+		srvr.auth = auth
 	}
 }
 
@@ -109,7 +119,7 @@ func (s *httpServer) Run() {
 		log.Infof("+++ Starting systemd http server +++")
 		err = listenAndServeSystemD(s.server)
 	} else {
-		log.Infof("+++ Starting http server on %v +++", s.server.Addr)
+		log.Infow("+++ Starting http server on %v +++", "addr", s.server.Addr)
 		err = s.server.ListenAndServe()
 	}
 	if err != nil && err != http.ErrServerClosed {
@@ -145,8 +155,22 @@ func (s *httpServer) shutdownWaiter(waitForGracefulShutdownComplete chan<- bool)
 	close(waitForGracefulShutdownComplete)
 }
 
+type RouteOption func(*ShiftPathRoute)
+
+func ParseAuth(authparser authParser) RouteOption {
+	return func(route *ShiftPathRoute) {
+		route.OptionParseRequestAuth = authparser
+	}
+}
+
+func RequireAuth(authparser authParser) RouteOption {
+	return func(route *ShiftPathRoute) {
+		// route.OptionRequireRequestAuth = authparser
+	}
+}
+
 // Register connects given handler to given path prefix
-func (s *httpServer) Register(path string, handler interface{}) *ShiftPathRoute {
+func (s *httpServer) Register(path string, handler interface{}, options ...RouteOption) *ShiftPathRoute {
 
 	h, err := ConvertHandlerType(handler)
 	if err != nil {
@@ -154,6 +178,10 @@ func (s *httpServer) Register(path string, handler interface{}) *ShiftPathRoute 
 		os.Exit(1)
 	}
 
-	return s.routes.Register("GET", path, h)
+	route := s.routes.Register("", path, h)
+	for _, applyOption := range options {
+		applyOption(route)
+	}
+	return route
 
 }

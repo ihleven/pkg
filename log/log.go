@@ -1,44 +1,37 @@
 package log
 
 import (
+	"github.com/fatih/color"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-var global *zap.Logger
+// Debug logs stuff that the user doesn’t care about but developers do.
+func Debugf(message string, args ...interface{}) {
+	color.Cyan(message+"\n", args...)
+}
 
-func init() {
-	// global, _ = zap.NewProduction(zap.AddCallerSkip(1))
-	// defer logger.Sync()
+// Info logs stuff that you tell the user
+func Infof(format string, args ...interface{}) {
+	// color.Green(format+"\n", args...)
+	globalSugar.Infof(format, args...)
+}
 
-	cfg := zap.Config{
-		Encoding:         "console",
-		Level:            zap.NewAtomicLevelAt(zapcore.DebugLevel),
-		OutputPaths:      []string{"stderr"},
-		ErrorOutputPaths: []string{"stderr"},
-		EncoderConfig: zapcore.EncoderConfig{
-			MessageKey: "message",
-
-			LevelKey:    "level",
-			EncodeLevel: zapcore.CapitalLevelEncoder,
-
-			TimeKey:    "time",
-			EncodeTime: zapcore.ISO8601TimeEncoder,
-
-			CallerKey:    "caller",
-			EncodeCaller: zapcore.ShortCallerEncoder,
-		},
-	}
-	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	global, _ = cfg.Build()
+// Fatal -> one message, that exits the program.
+func Errorf(err error, format string, args ...interface{}) {
+	globalSugar.Errorf(format, args)
 }
 
 func Debug(msg string, fields ...Field) {
-	global.Debug(msg, fields...)
+	globalPlain.Debug(msg, fields...)
 }
 
 func Info(msg string, fields ...Field) {
-	global.Info(msg, fields...)
+	globalPlain.Info(msg, fields...)
+}
+
+func Infow(msg string, keysAndValues ...interface{}) {
+	globalSugar.Infow(msg, keysAndValues...)
 }
 
 type Field = zapcore.Field
@@ -46,20 +39,17 @@ type Field = zapcore.Field
 var Str = zap.String
 var Int = zap.Int
 
-// func Int(key string, val int) Field {
-// 	return zap.Int(key, val)
-// }
+// var Err = zap.Any
+
+func Err(e error) Field {
+	return zap.Any("error", e)
+}
 
 // func Str(key string, val string) Field {
 // 	return zap.String(key, val)
 // }
 
 // Info logs stuff that you tell the user
-func Infof(format string, args ...interface{}) {
-	global.Sugar().Infof(format, args...)
-}
-
-// Fatal -> one message, that exits the program.
-func Errorf(err error, format string, args ...interface{}) {
-	global.Sugar().Infof(format, args)
-}
+// func Infof(format string, args ...interface{}) {
+// 	global.Sugar().Infof(format, args...)
+// }
