@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync/atomic"
 
+	"github.com/gorilla/sessions"
 	"github.com/ihleven/pkg/errors"
 )
 
@@ -22,14 +23,15 @@ type ResponseWriter struct {
 	Authkey      string
 	err          error
 	RuntimeStack []byte
+	Session      *sessions.Session
 }
 
 // NewResponseWriter wraps given http.ResponseWriter in a ResponseWriter overwriting the WriteHeader method
-func NewResponseWriter(w http.ResponseWriter, debug, pretty bool) *ResponseWriter {
+func NewResponseWriter(w http.ResponseWriter, debug, pretty bool, session *sessions.Session) *ResponseWriter {
 
 	routeparams := make(map[string]string)
 
-	return &ResponseWriter{w, debug, pretty, routeparams, 0, 0, "", nil, nil}
+	return &ResponseWriter{w, debug, pretty, routeparams, 0, 0, "", nil, nil, session}
 }
 
 // Write captures the response size

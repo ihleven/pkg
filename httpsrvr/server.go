@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gorilla/sessions"
 	"github.com/ihleven/pkg/httpauth"
 	"github.com/ihleven/pkg/log"
 	"go.uber.org/zap"
@@ -17,6 +18,7 @@ import (
 
 // only available on linux, see systemd.go
 var listenAndServeSystemD func(*http.Server) error
+
 
 func NewServer(port int, debug bool, options ...Option) *httpServer {
 
@@ -36,6 +38,7 @@ func NewServer(port int, debug bool, options ...Option) *httpServer {
 		// logger:        nil,
 		requestLogger: NewZapRequestLogger(fd),
 		// carrier:       httpauth.NewCookieCarrier([]byte("my_secret_key")),
+		SessionStore: nil,
 	}
 	for _, opt := range options {
 		opt(srvr)
@@ -56,6 +59,7 @@ type httpServer struct {
 	// logger        logger
 	requestLogger *zap.Logger
 	auth          *httpauth.Auth
+	SessionStore  *sessions.CookieStore
 }
 
 type Option func(*httpServer)
@@ -90,6 +94,13 @@ func WithSystemd(enabled bool) func(srvr *httpServer) {
 func WithAuth(auth *httpauth.Auth) func(srvr *httpServer) {
 	return func(srvr *httpServer) {
 		srvr.auth = auth
+	}
+}
+
+// WithSystemd enables or disables systemd mode
+func WithSession(SESSION_KEY []byte) func(srvr *httpServer) {
+	return func(srvr *httpServer) {
+		srvr.SessionStore = sessions.NewCookieStore(SESSION_KEY)
 	}
 }
 

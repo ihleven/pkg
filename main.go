@@ -14,9 +14,12 @@ import (
 
 func main() {
 
+	log.Info("Hallo Welt!", log.String("asdf", "sdf"), log.String("foo", "bar"))
+	// log.Info("asdf%s", 89).Err(errors.New("sdfsaf")).Package("Asdf").Msg("ASdf")
+	// log.Int("asdf", 56).Info("asdf%s", 89)
 	// log.Setup()
 
-	srv := httpsrvr.NewServer(8001, true)
+	srv := httpsrvr.NewServer(8001, true, httpsrvr.WithSession([]byte("SESSION_KEY")))
 
 	// srv.Register("/", http.FileServer(http.FS(fsys))).Name("nuxt")
 	// srv.Register("/api", authMiddleware(apirouter.Router()))
@@ -40,11 +43,12 @@ func main() {
 	// srv.Register("/nested/:code/region/:region/aasdf", dynhandler)
 	srv.Register("/kunst/", KunstAPI(true))
 	srv.Register("/login", LoginFormHandler)
+	srv.Register("/welcome", WelcomeHandler)
 
 	// log.Errorf(nil, " === test logErrorf === %s %d", "id", 78)
 	// log.Debugf(" === test log.Infof === %d %s", 17, "wach")
-	log.Info(" === test log.Info:", log.Err(errors.New("pkgerr")))
-	log.Info("test log.Info:", log.Int("number", 17), log.Str("hallo", "wach"))
+	// log.Info(" === test log.Info:", log.Err(errors.New("pkgerr")))
+	// log.Info("test log.Info:", log.Int("number", 17), log.Str("hallo", "wach"))
 	srv.Run()
 }
 
@@ -122,14 +126,29 @@ func KunstAPI(debug bool) httpsrvr.ResponseWriterErrorHandlerFunc {
 //go:embed templates/*
 var templates embed.FS
 
-func LoginFormHandler(w http.ResponseWriter, r *http.Request) {
+func LoginFormHandler(w *httpsrvr.ResponseWriter, r *http.Request) {
 
 	t, err := template.ParseFS(templates, "templates/*.html")
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	w.Session.Values["foo"] = "bar"
+	err = w.Session.Save(r, w)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else {
+		w.WriteHeader(200)
+		t.ExecuteTemplate(w, "login.html", nil)
+	}
+}
 
-	w.WriteHeader(200)
-	t.ExecuteTemplate(w, "login.html", nil)
+func WelcomeHandler(w *httpsrvr.ResponseWriter, r *http.Request) {
+
+	if w.Session != nil {
+		bar := w.Session.Values["foo"]
+		w.RespondJSON(bar)
+	}
+
 }

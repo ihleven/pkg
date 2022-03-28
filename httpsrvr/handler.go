@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/gorilla/sessions"
 	"github.com/ihleven/pkg/errors"
 )
 
@@ -30,7 +31,14 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	r = r.WithContext(ctx)
 
-	rw := NewResponseWriter(w, s.debug, s.debug)
+	var session *sessions.Session
+	if s.SessionStore != nil {
+		// Get a session. We're ignoring the error resulted from decoding an
+		// existing session: Get() always returns a session, even if empty.
+		session, _ = s.SessionStore.Get(r, "session-name")
+	}
+
+	rw := NewResponseWriter(w, s.debug, s.debug, session)
 
 	route, tail := s.routes.Dispatch(r.URL.Path, rw.Params)
 	// if !route.preserve {
