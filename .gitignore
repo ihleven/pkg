@@ -21,3 +21,5 @@ pkg
 pkg-linux
 icloud
 cmd/cmd
+tmp.log
+gin-bin

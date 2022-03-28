@@ -6,44 +6,49 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/fatih/color"
+	"github.com/gorilla/sessions"
+	"github.com/ihleven/pkg/httpauth"
 	"github.com/ihleven/pkg/log"
+	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 )
 
 // only available on linux, see systemd.go
 var listenAndServeSystemD func(*http.Server) error
 
-func NewServer(port int, debug bool) *httpServer {
+func NewServer(port int, debug bool, options ...Option) *httpServer {
 
 	start := time.Now()
-
-	loglevel := log.INFO
-	if debug {
-		loglevel = log.DEBUG
+	fd, err := os.OpenFile("tmp.log", os.O_RDWR, os.ModeAppend)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(0)
 	}
 	host := ""
-	return &httpServer{
-		addr:   fmt.Sprintf("%s:%d", host, port),
-		routes: NewDispatcher(nil, "root"),
-		// systemd:   systemd,
+	srvr := &httpServer{
+		addr:      fmt.Sprintf("%s:%d", host, port),
+		routes:    NewShiftPathRouter(http.NotFoundHandler(), "root"),
 		debug:     debug,
-		log:       log.NewStdoutLogger(loglevel),
-		logger:    log.AccessLogger{"CombineLoggerType"}, // log.NewStdoutLogger(loglevel),
 		startedAt: start,
-		instance:  start.Format("20060102T150405"),
+		instance:  start.Format("060102-150405"),
+		// logger:        nil,
+		requestLogger: NewZapRequestLogger(fd),
+		// carrier:       httpauth.NewCookieCarrier([]byte("my_secret_key")),
+		SessionStore: nil,
+		SessionName:  "",
 	}
+	for _, opt := range options {
+		opt(srvr)
+	}
+	return srvr
 }
 
 type httpServer struct {
 	server    *http.Server
-	routes    *dispatcher
-	log       logger
-	logger    accesslogger
+	routes    *ShiftPathRoute
 	addr      string
 	debug     bool
 	systemd   bool
@@ -51,27 +56,72 @@ type httpServer struct {
 	instance  string
 	counter   uint64
 	startedAt time.Time
+	// logger        logger
+	requestLogger *zap.Logger
+	auth          *httpauth.Auth
+	SessionStore  *sessions.CookieStore
+	SessionName   string
 }
 
-// NewLimiter returns a new Limiter that allows events up to rate r and permits bursts of at most b tokens.
-func (s *httpServer) SetLimit(r float64, bursts int) *httpServer {
+type Option func(*httpServer)
 
-	s.limiter = rate.NewLimiter(rate.Limit(r), bursts)
-	return s
+func Port(port int) func(srvr *httpServer) {
+	return func(srvr *httpServer) {
+		srvr.addr = fmt.Sprintf("%s:%d", "", port)
+	}
+}
+
+// func Logger(logger logger) func(srvr *httpServer) {
+// 	return func(srvr *httpServer) {
+// 		srvr.logger = logger
+// 	}
+// }
+
+// SetLimit enables rate limiting that allows events up to rate r and permits bursts of at most b tokens.
+func SetLimit(r float64, bursts int) func(srvr *httpServer) {
+	return func(srvr *httpServer) {
+		srvr.limiter = rate.NewLimiter(rate.Limit(r), bursts)
+	}
 }
 
 // WithSystemd enables or disables systemd mode
-func (s *httpServer) WithSystemd(enabled bool) *httpServer {
-
-	s.systemd = enabled
-	return s
+func WithSystemd(enabled bool) func(srvr *httpServer) {
+	return func(srvr *httpServer) {
+		srvr.systemd = enabled
+	}
 }
 
-// WithSystemd enables or disables systemd mode
-func (s *httpServer) SetLogger(logger logger) *httpServer {
+// WithAuth
+func WithAuth(auth *httpauth.Auth) func(srvr *httpServer) {
+	return func(srvr *httpServer) {
+		srvr.auth = auth
+	}
+}
 
-	s.log = logger
-	return s
+// WithSession
+func WithSession(name string, key []byte) func(srvr *httpServer) {
+	return func(srvr *httpServer) {
+		srvr.SessionName = name
+		srvr.SessionStore = sessions.NewCookieStore(key)
+		srvr.SessionStore.Options = &sessions.Options{
+			Path:     "/",
+			MaxAge:   86400 * 7,
+			HttpOnly: true,
+		}
+	}
+}
+
+// WithEncryptecSession
+func WithEncryptecSession(SessionName string, SessionKey, EncryptionKey []byte) func(srvr *httpServer) {
+	return func(srvr *httpServer) {
+		srvr.SessionName = SessionName
+		srvr.SessionStore = sessions.NewCookieStore(SessionKey, EncryptionKey)
+		srvr.SessionStore.Options = &sessions.Options{
+			Path:     "/",
+			MaxAge:   86400 * 7,
+			HttpOnly: true,
+		}
+	}
 }
 
 func (s *httpServer) ListenAndServe(host string, port int) {
@@ -97,15 +147,15 @@ func (s *httpServer) Run() {
 
 	var err error
 	if listenAndServeSystemD != nil && s.systemd {
-		s.log.Info("+++ Starting systemd http server +++")
+		log.Infof("+++ Starting systemd http server +++")
 		err = listenAndServeSystemD(s.server)
 	} else {
-		s.log.Info("+++ Starting http server on %v +++", s.server.Addr)
+		log.Infow("+++ Starting http server on %v +++", "addr", s.server.Addr)
 		err = s.server.ListenAndServe()
 	}
 	if err != nil && err != http.ErrServerClosed {
 		// immediately returns after shutdown
-		s.log.Fatal(err, "Could not listen on %s", s.addr)
+		log.Errorf(err, "Could not listen on %s", s.addr)
 	}
 
 	<-waitForGracefulShutdownComplete
@@ -124,82 +174,45 @@ func (s *httpServer) shutdownWaiter(waitForGracefulShutdownComplete chan<- bool)
 	// Warten auf SIGTERM
 	<-quit
 
-	s.log.Info(" +++ Server is shutting down... waiting up to 30 secs")
+	log.Infof(" +++ Server is shutting down... waiting up to 30 secs")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	s.server.SetKeepAlivesEnabled(false)
 	if err := s.server.Shutdown(ctx); err != nil {
-		s.log.Info("Could not gracefully shutdown the server: %v\n", err)
+		log.Infof("Could not gracefully shutdown the server: %v\n", err)
 	}
 	close(waitForGracefulShutdownComplete)
 }
 
+type RouteOption func(*ShiftPathRoute)
+
+func ParseAuth(authparser authParser) RouteOption {
+	return func(route *ShiftPathRoute) {
+		route.OptionParseRequestAuth = authparser
+	}
+}
+
+func RequireAuth(authparser authParser) RouteOption {
+	return func(route *ShiftPathRoute) {
+		// route.OptionRequireRequestAuth = authparser
+	}
+}
+
 // Register connects given handler to given path prefix
-func (s *httpServer) Register(path string, handler interface{}) *dispatcher {
+func (s *httpServer) Register(path string, handler interface{}, options ...RouteOption) *ShiftPathRoute {
 
-	switch h := handler.(type) {
-	case http.Handler:
-		return s.routes.Register(path, h)
-
-	case func(w http.ResponseWriter, r *http.Request):
-		return s.routes.Register(path, http.HandlerFunc(h))
-
-	case ErrorHandler:
-		return s.routes.Register(path, h)
-
-	case func(http.ResponseWriter, *http.Request) error:
-		return s.routes.Register(path, ErrorHandler(h))
-
-	default:
-		s.log.Info("Could not register route '%v': unknown handler type %T", path, handler)
+	h, err := ConvertHandlerType(handler)
+	if err != nil {
+		log.Infof("Could not register route '%v': unknown handler type %T", path, handler)
 		os.Exit(1)
 	}
-	return nil
-}
 
-func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	start := time.Now()
-	reqnum := atomic.AddUint64(&s.counter, 1)
-	reqid := r.Header.Get("X-Request-ID")
-	if reqid == "" {
-		reqid = fmt.Sprintf("%s-%d", s.instance, reqnum)
+	route := s.routes.Register("", path, h)
+	for _, applyOption := range options {
+		applyOption(route)
 	}
+	return route
 
-	rw := NewResponseWriter(w)
-
-	ctx := context.WithValue(r.Context(), "reqid", reqid)
-	ctx = context.WithValue(ctx, "counter", reqnum)
-	ctx = context.WithValue(ctx, "debug", s.debug)
-
-	r = r.WithContext(ctx)
-
-	dispatcher, tail := s.Dispatch(r.URL.Path)
-	if !dispatcher.preserve {
-		r.URL.Path = tail
-	}
-
-	defer func(start time.Time, reqnum uint64, reqid string, name string) {
-		err := recover()
-		if err != nil {
-			color.Red(" error request %d: %s %s => %d (%d bytes, %v)\n", reqnum, reqid, r.URL.Path, rw.statusCode, rw.Count(), time.Since(start))
-		}
-
-		s.logger.Access(reqnum, reqid, start, r.RemoteAddr, "user", r.Method, r.URL.Path, r.Proto, rw.statusCode, int(rw.Count()), time.Since(start), r.Referer(), name)
-		color.Green("request %d: %s %s => %d (%d bytes, %v)\n", reqnum, reqid, r.URL.Path, rw.statusCode, rw.Count(), time.Since(start))
-	}(start, reqnum, reqid, dispatcher.name)
-
-	dispatcher.handler.ServeHTTP(rw, r)
-}
-
-func (s *httpServer) Dispatch(route string) (*dispatcher, string) {
-
-	head, tail := shiftPath(route)
-
-	if disp, ok := s.routes.children[head]; ok {
-		return disp.GetDispatcher(tail)
-	}
-	return s.routes, route
 }
