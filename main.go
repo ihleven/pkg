@@ -8,30 +8,36 @@ import (
 	"time"
 
 	"github.com/ihleven/pkg/errors"
+	"github.com/ihleven/pkg/httpauth"
 	"github.com/ihleven/pkg/httpsrvr"
 	"github.com/ihleven/pkg/log"
 )
 
 func main() {
 
+	var usermap = map[string]string{
+		"matt":     "$2a$14$zwGqBhhCzCQMBKV3zlDO5.f1FGCUSYDIiN6D9aTY2yJ5DLmJ1TsdW",
+		"wolfgang": "$2a$14$KWkdJOJLa4FkKHyXZ9xFceutb8qqkQ0V2Ue1.Ce9Rn0OD69.tDHHC",
+	}
+
+	hauth := httpauth.NewAuth(usermap, []byte("my_secret_key"))
+
 	log.Info("Hallo Welt!", log.String("asdf", "sdf"), log.String("foo", "bar"))
 	// log.Info("asdf%s", 89).Err(errors.New("sdfsaf")).Package("Asdf").Msg("ASdf")
 	// log.Int("asdf", 56).Info("asdf%s", 89)
 	// log.Setup()
 
-	srv := httpsrvr.NewServer(8001, true, httpsrvr.WithSession([]byte("SESSION_KEY")))
+	srv := httpsrvr.NewServer(8001, true, httpsrvr.WithAuth(hauth), httpsrvr.WithEncryptecSession("SESSION", []byte("SESSION_KEY"), []byte("ENCRYPTION_KEY16")))
 
-	// srv.Register("/", http.FileServer(http.FS(fsys))).Name("nuxt")
-	// srv.Register("/api", authMiddleware(apirouter.Router()))
-
-	// srv.Register("/api/file", api.AuthMiddlewareFunc(drive.Serve))
-	// srv.Register("/api/thumbs", api.AuthMiddlewareFunc(drive.ThumbHandler))
-	// srv.Register("/api/signin", auth.SigninHandler(usermap))
-	// srv.Register("/api/signout", auth.SignoutHandler)
 	srv.Register("/test", func(w http.ResponseWriter, r *http.Request) error {
-		// return nil
-		time.Sleep(5 * time.Second)
-		return nil //errors.Wrap(errors.NewWithCode(400, "Fehler mit Code 400"), "Gewrappt")
+
+		password := r.URL.Query().Get("password")
+		hash, err := httpauth.HashPassword(password)
+		if err != nil {
+			return err
+		}
+		w.Write([]byte(hash))
+		return nil
 	})
 	srv.Register("/test/asdf", handler)
 	srv.Register("/handler/func", handlerfunc)
@@ -42,7 +48,7 @@ func main() {
 	srv.Register("/country/(?P<country>[0-9]+$)/(?P<region>^[0-9]+$)", dynhandler)
 	// srv.Register("/nested/:code/region/:region/aasdf", dynhandler)
 	srv.Register("/kunst/", KunstAPI(true))
-	srv.Register("/login", LoginFormHandler)
+	srv.Register("/login", LoginFormHandler(hauth))
 	srv.Register("/welcome", WelcomeHandler)
 
 	// log.Errorf(nil, " === test logErrorf === %s %d", "id", 78)
@@ -126,29 +132,51 @@ func KunstAPI(debug bool) httpsrvr.ResponseWriterErrorHandlerFunc {
 //go:embed templates/*
 var templates embed.FS
 
-func LoginFormHandler(w *httpsrvr.ResponseWriter, r *http.Request) {
+func LoginFormHandler(a *httpauth.Auth) func(w *httpsrvr.ResponseWriter, r *http.Request) {
 
-	t, err := template.ParseFS(templates, "templates/*.html")
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	w.Session.Values["foo"] = "bar"
-	err = w.Session.Save(r, w)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	} else {
+	return func(w *httpsrvr.ResponseWriter, r *http.Request) {
+
+		data := map[string]interface{}{}
+
+		if r.Method == http.MethodPost {
+
+			account := a.Authenticate(r.PostFormValue("username"), r.PostFormValue("password"))
+			if account != "" {
+				a.Login(w, account)
+				w.Session.Values["account"] = account
+				err := w.Session.Save(r, w)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				http.Redirect(w, r, "/welcome", 303)
+				return
+			}
+			data["error"] = "Invalid credentials"
+		}
+
+		t, err := template.ParseFS(templates, "templates/*.html")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
 		w.WriteHeader(200)
-		t.ExecuteTemplate(w, "login.html", nil)
+		t.ExecuteTemplate(w, "login.html", data)
+
 	}
 }
 
 func WelcomeHandler(w *httpsrvr.ResponseWriter, r *http.Request) {
 
-	if w.Session != nil {
-		bar := w.Session.Values["foo"]
-		w.RespondJSON(bar)
+	if w.Session.Values["account"] != nil {
+		// bar := w.Session.Values["foo"]
+		account := w.Session.Values["account"]
+		w.Write([]byte(fmt.Sprintf("Welcome %s !!!", account.(string))))
+	} else {
+		// w.WriteHeader(401)
+		http.Redirect(w, r, "/login", 302)
 	}
 
 }

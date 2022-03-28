@@ -19,7 +19,6 @@ import (
 // only available on linux, see systemd.go
 var listenAndServeSystemD func(*http.Server) error
 
-
 func NewServer(port int, debug bool, options ...Option) *httpServer {
 
 	start := time.Now()
@@ -39,6 +38,7 @@ func NewServer(port int, debug bool, options ...Option) *httpServer {
 		requestLogger: NewZapRequestLogger(fd),
 		// carrier:       httpauth.NewCookieCarrier([]byte("my_secret_key")),
 		SessionStore: nil,
+		SessionName:  "",
 	}
 	for _, opt := range options {
 		opt(srvr)
@@ -60,6 +60,7 @@ type httpServer struct {
 	requestLogger *zap.Logger
 	auth          *httpauth.Auth
 	SessionStore  *sessions.CookieStore
+	SessionName   string
 }
 
 type Option func(*httpServer)
@@ -90,17 +91,36 @@ func WithSystemd(enabled bool) func(srvr *httpServer) {
 	}
 }
 
-// WithSystemd enables or disables systemd mode
+// WithAuth
 func WithAuth(auth *httpauth.Auth) func(srvr *httpServer) {
 	return func(srvr *httpServer) {
 		srvr.auth = auth
 	}
 }
 
-// WithSystemd enables or disables systemd mode
-func WithSession(SESSION_KEY []byte) func(srvr *httpServer) {
+// WithSession
+func WithSession(name string, key []byte) func(srvr *httpServer) {
 	return func(srvr *httpServer) {
-		srvr.SessionStore = sessions.NewCookieStore(SESSION_KEY)
+		srvr.SessionName = name
+		srvr.SessionStore = sessions.NewCookieStore(key)
+		srvr.SessionStore.Options = &sessions.Options{
+			Path:     "/",
+			MaxAge:   86400 * 7,
+			HttpOnly: true,
+		}
+	}
+}
+
+// WithEncryptecSession
+func WithEncryptecSession(SessionName string, SessionKey, EncryptionKey []byte) func(srvr *httpServer) {
+	return func(srvr *httpServer) {
+		srvr.SessionName = SessionName
+		srvr.SessionStore = sessions.NewCookieStore(SessionKey, EncryptionKey)
+		srvr.SessionStore.Options = &sessions.Options{
+			Path:     "/",
+			MaxAge:   86400 * 7,
+			HttpOnly: true,
+		}
 	}
 }
 

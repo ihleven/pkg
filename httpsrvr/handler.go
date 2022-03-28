@@ -35,7 +35,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.SessionStore != nil {
 		// Get a session. We're ignoring the error resulted from decoding an
 		// existing session: Get() always returns a session, even if empty.
-		session, _ = s.SessionStore.Get(r, "session-name")
+		session, _ = s.SessionStore.Get(r, s.SessionName)
 	}
 
 	rw := NewResponseWriter(w, s.debug, s.debug, session)

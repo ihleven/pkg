@@ -64,7 +64,7 @@ func (a *Auth) WelcomeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("Welcome %s!", authkey)))
 }
 
-func LogoutHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Auth) SignoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	c := &http.Cookie{
 		Name:     "token",
