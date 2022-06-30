@@ -2,6 +2,7 @@ package hidrive
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"path"
 	"strings"
@@ -94,13 +95,71 @@ func (d *Drive) drivepath(fullpath string, username string) string {
 }
 
 func (d *Drive) processMetaResponse(response io.Reader) (*Meta, error) {
+	// fmt.Println("processMetaResponse:")
 	var meta Meta
 	err := json.NewDecoder(response).Decode(&meta)
 	if err != nil {
 		return nil, errors.Wrap(err, "Error decoding response")
 	}
+	// fmt.Println("processMetaResponse:", meta)
 	meta.Path = d.drivepath(meta.Path, "")
 	meta.NameURLEncoded = meta.Name()
+
+	if meta.Path == "" {
+		meta.Path = "/"
+	}
+	if meta.Path == "/" {
+		meta.NameURLEncoded = ""
+	}
+	return &meta, nil
+}
+
+func (d *Drive) processMetaResponseCreateFile(response io.Reader) (*Meta, error) {
+	type Exif2 struct {
+		DateTimeOriginal string
+		ExifImageHeight  string
+		ExifImageWidth   string
+	}
+	type Image2 struct {
+		Height int   `json:"height"`
+		Width  int   `json:"width"`
+		Exif   Exif2 `json:"exif"`
+	}
+	type Metana struct {
+		NameURLEncoded string  `json:"name"`           //    - string    - URL-encoded name of the directory
+		Path           string  `json:"path,omitempty"` //    - string    - URL-encoded path to the directory
+		Filetype       string  `json:"type"`           //    - string    - e.g. "dir"
+		MIMEType       string  `json:"mime_type"`
+		MTime          int64   `json:"mtime,omitempty"`    //    - timestamp - mtime of the directory
+		CTime          int64   `json:"ctime,omitempty"`    //    - timestamp - ctime of the directory
+		Readable       bool    `json:"readable,omitempty"` //    - bool      - read-permission for the directory
+		Writable       bool    `json:"writable,omitempty"` //    - bool      - write-permission for the directory
+		Filesize       uint64  `json:"size,omitempty"`
+		Nmembers       int     `json:"nmembers,omitempty"`
+		HasDirs        bool    `json:"has_dirs,omitempty"` //    - bool      - does the directory contain subdirs?
+		ID             string  `json:"id,omitempty"`       //    - string    - path id of the directory
+		ParentID       string  `json:"parent_id,omitempty"`
+		Image          *Image2 `json:"image,omitempty"`
+		Members        []Meta  `json:"members,omitempty"`
+		Content        string  `json:"content,omitempty"`
+	}
+
+	var m Metana
+
+	err := json.NewDecoder(response).Decode(&m)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error decoding response")
+	}
+	fmt.Println("metana: ", m)
+	meta := Meta{
+		NameURLEncoded: m.NameURLEncoded,
+		Path:           d.drivepath(m.Path, ""),
+		Image: &Image{
+			Width:  m.Image.Width,
+			Height: m.Image.Height,
+			Exif:   Exif{DateTimeOriginal: m.Image.Exif.DateTimeOriginal},
+		},
+	}
 
 	if meta.Path == "" {
 		meta.Path = "/"

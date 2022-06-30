@@ -2,6 +2,7 @@ package hidrive
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/url"
 	"path"
@@ -163,7 +164,7 @@ func (d *Drive) Rm(drivepath string, token *Token) error {
 	if err != nil {
 		return errors.Wrap(err, "Error in delete request")
 	}
-
+	fmt.Println("delete: ", drivepath, d.fullpath(drivepath, token.Alias), err)
 	return nil
 }
 
@@ -176,14 +177,18 @@ func (d *Drive) CreateFile(drivepath string, body io.Reader, name string, modtim
 	if modtime != "" {
 		params.Set("mtime", modtime)
 	}
+
 	response, err := d.client.Request("POST", "/file", params, body, token.AccessToken)
 	if err != nil {
 		return nil, errors.Wrap(err, "Error in post request")
 	}
 	defer response.Close()
 
-	return d.processMetaResponse(response)
+	// processMEtaResponse hat ein problem mit dem Typ von ExifImageHeight und ExifImageWidth   int // string
+	return d.processMetaResponseCreateFile(response)
+
 }
+
 func (d *Drive) Save(drivepath string, body io.Reader, token *Token) (*Meta, error) {
 
 	dir, file := path.Split(d.fullpath(drivepath, token.Alias))

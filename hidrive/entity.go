@@ -46,8 +46,8 @@ type Exif struct {
 	// 	Aperture         string
 	// 	BitsPerSample    string
 	DateTimeOriginal string
-	ExifImageHeight  int // string
-	ExifImageWidth   int // string
+	// ExifImageHeight  int // string
+	// ExifImageWidth   int // string
 	// 	ExposureTime     string
 	// 	FocalLength      string
 	// 	ISO              string

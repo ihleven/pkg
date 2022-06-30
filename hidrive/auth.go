@@ -70,7 +70,7 @@ func (m *AuthManager) GetAccessToken(key string) (*Token, error) {
 
 	default:
 		// Token gültig und wirdzurückgeben
-		fmt.Println(" -> OK", remaining, auth.Expiry)
+		// fmt.Println(" -> OK", time.Now(), remaining, auth.Expiry)
 	}
 
 	return auth.Token, nil
