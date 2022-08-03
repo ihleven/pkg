@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -22,7 +23,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	reqnum := atomic.AddUint64(&s.counter, 1)
 	reqid := r.Header.Get("X-Request-ID")
 	if reqid == "" {
-		reqid = fmt.Sprintf("%s-%d", s.instance, reqnum)
+		reqid = s.instance + "-" + strconv.FormatUint(reqnum, 10) // fmt.Sprintf("%s-%d", s.instance, reqnum)
 	}
 
 	color.Cyan("request %d: %s %s\n", reqnum, reqid, r.URL.Path)
@@ -45,8 +46,10 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.URL.Path = tail
 	// }
 	if route.OptionParseRequestAuth != nil {
+		// fmt.Println("authkey:", rw.Authkey)
 		rw.Authkey = route.OptionParseRequestAuth.ParseRequestAuth(r)
 	}
+	// fmt.Println("authkey:", rw.Authkey)
 
 	// The key point to note is that the 'f()' in 'defer f()' is not executed when the defer statement executes
 	// but the expression 'e' in 'defer f(e)' is evaluated when the defer statement executes.
@@ -69,7 +72,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.LogRequest(r, reqid, reqnum, start, rw, route.Name)
 	}()
 
-	// defer s.LogRequest(r, reqid, reqnum, start, rw, route.Name)
+	defer s.zerologRequest(r, reqid, reqnum, start, rw, route.Name)
 
 	// TODO: kann das durch route.DispatchAndServe ersetzt werden?!?
 	if handler, ok := route.Handler[r.Method]; ok {
@@ -77,8 +80,9 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else if handler, ok := route.Handler[""]; ok && handler != nil {
 		handler.ServeHTTP(rw, r)
 	} else {
-		http.Error(rw, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		http.Error(rw, http.StatusText(http.StatusMethodNotAllowed)+" in handler.go:85", http.StatusMethodNotAllowed)
 	}
+
 }
 
 func ConvertHandlerType(customhandler interface{}) (http.Handler, error) {
@@ -125,6 +129,7 @@ func (f ResponseWriterHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Requ
 type ResponseWriterErrorHandlerFunc func(*ResponseWriter, *http.Request) error
 
 func (h ResponseWriterErrorHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("ResponseWriterErrorHandlerFunc.ServeHTTP")
 
 	rw := w.(*ResponseWriter)
 	err := h(rw, r)
@@ -156,6 +161,8 @@ func (h ParamsErrorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rw := w.(*ResponseWriter)
 	err := h(rw, r, rw.Params)
 	if err != nil {
+		fmt.Println("ParamsErrorHandler.ServeHTTP => Error", err, errors.Code(err))
+
 		// rw.err = err
 		// debug := r.Context().Value("debug").(bool)
 		rw.RespondError(err)

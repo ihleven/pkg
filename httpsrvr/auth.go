@@ -2,6 +2,6 @@ package httpsrvr
 
 import "net/http"
 
-type authParser interface {
+type AuthParser interface {
 	ParseRequestAuth(*http.Request) string
 }

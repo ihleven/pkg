@@ -1,6 +1,7 @@
 package httpauth
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -67,14 +68,14 @@ func (a *Auth) Authenticate(username string, password string) string {
 	return ""
 }
 
-func (a *Auth) Login(w http.ResponseWriter, authkey string) {
+func (a *Auth) Login(w http.ResponseWriter, authkey string) string {
 
 	expirationTime := time.Now().Add(500 * time.Hour)
 
 	token, err := a.carrier.Synthesize(authkey, expirationTime)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return ""
 	}
 
 	// scheme := r.Header.Get("X-Forwarded-Proto")
@@ -87,6 +88,8 @@ func (a *Auth) Login(w http.ResponseWriter, authkey string) {
 		// SameSite: http.SameSiteStrictMode,
 		Path: "/",
 	})
+
+	return token
 }
 
 func (a *Auth) ParseRequestAuth(r *http.Request) string {
@@ -96,7 +99,9 @@ func (a *Auth) ParseRequestAuth(r *http.Request) string {
 	}
 	authkey, err := a.carrier.Parse(cookie.Value)
 	if err != nil {
+		fmt.Println("auth.ParseRequestAuth error", err.Error(), cookie.Value)
 		return ""
 	}
+	// fmt.Println("auth.ParseRequestAuth", cookie, err, a.cookieName == "token", authkey)
 	return authkey
 }
