@@ -46,8 +46,8 @@ type Exif struct {
 	// 	Aperture         string
 	// 	BitsPerSample    string
 	DateTimeOriginal string
-	ExifImageHeight  int // string
-	ExifImageWidth   int // string
+	ExifImageHeight  interface{} // string
+	ExifImageWidth   interface{} // string
 	// 	ExposureTime     string
 	// 	FocalLength      string
 	// 	ISO              string
@@ -55,7 +55,7 @@ type Exif struct {
 	// 	ImageWidth       string
 	Make        string
 	Model       string
-	Orientation int // string
+	Orientation interface{} // string
 	// 	ResolutionUnit   string
 	// 	XResolution      string
 	// 	YResolution      string

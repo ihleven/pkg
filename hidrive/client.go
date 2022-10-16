@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ihleven/errors"
+	"github.com/ihleven/pkg/errors"
 )
 
 // NewClient creates a new hidrive client
@@ -70,7 +70,6 @@ func (c *HiDriveClient) Request(method, endpoint string, params url.Values, body
 		return response.Body, nil
 	case 204:
 		return nil, nil
-
 	default:
 		hidriveError := NewHidriveError(response)
 		if hidriveError == nil {
@@ -128,7 +127,10 @@ func (c *HiDriveClient) GetMeta(path, pid, fields string, token string) (*Meta, 
 func (c *HiDriveClient) GetDir(path, pid, members string, offset, limit int, fields, sort string, token string) (*Meta, error) {
 
 	// var params map[string][]string
-	params := map[string][]string{"path": {path}, "members": {"all"}}
+	params := map[string][]string{
+		"path":    {path},
+		"members": {"all"},
+	}
 	if members != "" {
 		params["members"] = []string{members}
 	}

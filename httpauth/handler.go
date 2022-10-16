@@ -67,14 +67,14 @@ func (a *Auth) WelcomeHandler(w http.ResponseWriter, r *http.Request) {
 func (a *Auth) SignoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	c := &http.Cookie{
-		Name:     "token",
-		Value:    "",
-		Path:     "/",
-		Expires:  time.Unix(0, 0),
-		Secure:   true,
+		Name:    "token",
+		Value:   "",
+		Path:    "/",
+		Expires: time.Unix(0, 0),
+		// Secure:   true,
 		HttpOnly: true,
 	}
 
 	http.SetCookie(w, c)
-	http.Redirect(w, r, "/login", 301)
+	// http.Redirect(w, r, "/login", 302)
 }

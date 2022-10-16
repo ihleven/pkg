@@ -7,7 +7,7 @@ import (
 	"path"
 	"sync"
 
-	"github.com/ihleven/errors"
+	"github.com/ihleven/pkg/errors"
 )
 
 // GetMeta concurrently retrieves file and folder meta data
@@ -59,7 +59,6 @@ func (d *Drive) GetMeta(drivepath string, token *Token) (*Meta, error) {
 
 // Meta gibt ein Meta-Objekt für den übergeben Drive-Pfad zurück
 // TODO: Berechtigungen prüfen
-//
 func (d *Drive) Meta(drivepath string, token *Token) (*Meta, error) {
 
 	fullpath := d.fullpath(drivepath, token.Alias)
@@ -122,18 +121,18 @@ func (d *Drive) Listdir(drivepath string, token *Token) ([]Meta, error) {
 
 	body, err := d.client.Request("GET", "/dir", params, nil, token.AccessToken)
 	if err != nil {
-		return nil, errors.Wrap(err)
+		return nil, errors.Wrap(err, "")
 	}
 	defer body.Close()
 
 	var dir Meta
 	err = json.NewDecoder(body).Decode(&dir)
 	if err != nil {
-		return nil, errors.Wrap(err)
+		return nil, errors.Wrap(err, "")
 	}
 	for i, m := range dir.Members {
 		dir.Members[i].NameURLEncoded = m.Name()
-		dir.Members[i].Path = d.drivepath(m.Path, token.Alias)
+		dir.Members[i].Path = path.Join(drivepath, m.Name()) //d.drivepath(m.Path, token.Alias)
 	}
 	return dir.Members, nil
 }
@@ -184,6 +183,7 @@ func (d *Drive) CreateFile(drivepath string, body io.Reader, name string, modtim
 
 	return d.processMetaResponse(response)
 }
+
 func (d *Drive) Save(drivepath string, body io.Reader, token *Token) (*Meta, error) {
 
 	dir, file := path.Split(d.fullpath(drivepath, token.Alias))

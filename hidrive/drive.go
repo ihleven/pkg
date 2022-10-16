@@ -6,7 +6,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/ihleven/errors"
+	"github.com/ihleven/pkg/errors"
 )
 
 // NewDrive creates a new hidrive

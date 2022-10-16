@@ -22,7 +22,7 @@ func main() {
 
 	hauth := httpauth.NewAuth(usermap, []byte("my_secret_key"))
 
-	log.Info("Hallo Welt!", log.String("asdf", "sdf"), log.String("foo", "bar"))
+	log.Info("Hallo Welt!", log.Str("asdf", "sdf"), log.Str("foo", "bar"))
 	// log.Info("asdf%s", 89).Err(errors.New("sdfsaf")).Package("Asdf").Msg("ASdf")
 	// log.Int("asdf", 56).Info("asdf%s", 89)
 	// log.Setup()
@@ -50,6 +50,7 @@ func main() {
 	srv.Register("/kunst/", KunstAPI(true))
 	srv.Register("/login", LoginFormHandler(hauth))
 	srv.Register("/welcome", WelcomeHandler)
+	srv.Register("/logout", hauth.SignoutHandler)
 
 	// log.Errorf(nil, " === test logErrorf === %s %d", "id", 78)
 	// log.Debugf(" === test log.Infof === %d %s", 17, "wach")
