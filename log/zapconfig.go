@@ -1,8 +1,6 @@
 package log
 
 import (
-	"fmt"
-
 	"github.com/mattn/go-colorable"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -16,7 +14,6 @@ func init() {
 	encoderConfig := zap.NewDevelopmentEncoderConfig()
 	encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 
-	fmt.Printf("encoderConfig: %#v\n", encoderConfig)
 	encoder := zapcore.NewConsoleEncoder(encoderConfig)
 
 	writeSyncer := zapcore.AddSync(colorable.NewColorableStdout())

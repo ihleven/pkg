@@ -24,11 +24,11 @@ func (e *Error) Format(f fmt.State, verb rune) {
 	case 'v':
 		var bytes []byte
 		var err error
-		if f.Flag('#') || f.Flag('+') {
-			bytes, err = json.MarshalIndent(e, "", "    ")
-		} else {
-			bytes, err = json.Marshal(e)
-		}
+		// if f.Flag('#') || f.Flag('+') {
+		bytes, err = json.MarshalIndent(e, "", "    ")
+		// } else {
+		// bytes, err = json.Marshal(e)
+		// }
 		if err != nil {
 			bytes = []byte(err.Error())
 		}
@@ -45,9 +45,12 @@ func (e *Error) MarshalJSON() ([]byte, error) {
 		frames = append(frames, f.String())
 	}
 	var frames2 []string
-	for _, f := range *e.pkgerrorstack {
-		frame := Frame(f)
-		frames2 = append(frames, fmt.Sprintf("%v", frame))
+	if (*e).pkgerrorstack != nil {
+
+		for _, f := range *e.pkgerrorstack {
+			frame := Frame(f)
+			frames2 = append(frames, fmt.Sprintf("%v", frame))
+		}
 	}
 	foo := struct {
 		Frames      []Annotation `json:"annotations,omitempty"`
@@ -62,7 +65,9 @@ func (e *Error) MarshalJSON() ([]byte, error) {
 // MarshalLogObject implements the interface used by zap error logging,
 // used for appending potential errors to the request log.
 func (a *Error) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddString("cause", a.cause.Error())
+	if a.cause != nil {
+		enc.AddString("cause", a.cause.Error())
+	}
 	enc.AddArray("ann", annotations(a.Frames))
 	return nil
 }

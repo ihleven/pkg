@@ -22,7 +22,8 @@ var listenAndServeSystemD func(*http.Server) error
 func NewServer(port int, debug bool, options ...Option) *httpServer {
 
 	start := time.Now()
-	fd, err := os.OpenFile("tmp.log", os.O_RDWR, os.ModeAppend)
+
+	fd, err := os.OpenFile("tmp.log", os.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_SYNC, 0666)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(0)
@@ -188,13 +189,13 @@ func (s *httpServer) shutdownWaiter(waitForGracefulShutdownComplete chan<- bool)
 
 type RouteOption func(*ShiftPathRoute)
 
-func ParseAuth(authparser authParser) RouteOption {
+func ParseAuth(authparser AuthParser) RouteOption {
 	return func(route *ShiftPathRoute) {
 		route.OptionParseRequestAuth = authparser
 	}
 }
 
-func RequireAuth(authparser authParser) RouteOption {
+func RequireAuth(authparser AuthParser) RouteOption {
 	return func(route *ShiftPathRoute) {
 		// route.OptionRequireRequestAuth = authparser
 	}

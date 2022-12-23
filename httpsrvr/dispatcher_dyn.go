@@ -1,11 +1,13 @@
 package httpsrvr
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 
+	"github.com/ihleven/pkg/httpauth"
 	"github.com/ihleven/pkg/log"
 )
 
@@ -14,9 +16,10 @@ func NewShiftPathRouter(handler http.Handler, name string) *ShiftPathRoute {
 	// 	handler = http.HandlerFunc(MethodNotAllowed)
 	// }
 	return &ShiftPathRoute{
-		Name:    name,
-		Handler: map[string]http.Handler{"": handler},
-		PathMap: make(map[string]*ShiftPathRoute),
+		Name:     name,
+		Handler:  map[string]http.Handler{"": handler},
+		PathMap:  make(map[string]*ShiftPathRoute),
+		RegexMap: make(map[*regexp.Regexp]*ShiftPathRoute),
 	}
 }
 
@@ -26,16 +29,24 @@ type ShiftPathRoute struct {
 	PathMap  map[string]*ShiftPathRoute
 	RegexMap map[*regexp.Regexp]*ShiftPathRoute
 	// OptionAuth       bool
-	OptionParseRequestAuth authParser
+	OptionParseRequestAuth AuthParser
 }
 
 func (d *ShiftPathRoute) getRegexSubRoute(head string) (*ShiftPathRoute, bool) {
 
-	isRegex := strings.HasPrefix(head, "(")
-	if !isRegex {
-		return nil, false
+	if splits := strings.SplitN(head, ":", 2); len(splits) == 2 {
+		if splits[0] == "" {
+			head = "(?P<" + splits[1] + ">^[0-9a-zA-Z]+$)"
+		} else if splits[0] == "int" {
+			head = "(?P<" + splits[1] + ">^[0-9]+$)"
+		}
+	} else {
+
+		isRegex := strings.HasPrefix(head, "(")
+		if !isRegex {
+			return nil, false
+		}
 	}
-	// regexp, err := regexp.Compile(head)
 
 	// stringRegex := regexp.MustCompile("(?P<%s>[^/]+)")
 
@@ -114,6 +125,11 @@ func (r *ShiftPathRoute) SetName(name string) *ShiftPathRoute {
 	return r
 }
 
+func (r *ShiftPathRoute) Auth(auth *httpauth.Auth) *ShiftPathRoute {
+	r.OptionParseRequestAuth = auth
+	return r
+}
+
 //
 
 func (d *ShiftPathRoute) Dispatch(route string, params map[string]string) (*ShiftPathRoute, string) {
@@ -157,15 +173,32 @@ func (d *ShiftPathRoute) GetHandler(method string) http.Handler {
 
 func (d *ShiftPathRoute) ServeHTTPsrvr(rw *ResponseWriter, r *http.Request) {
 
-	route, _ := d.Dispatch(r.URL.Path, rw.Params)
+	route, tail := d.Dispatch(r.URL.Path, rw.Params)
+	handler := route.GetHandler(r.Method)
+	fmt.Printf("ServeHTTPsrvr %#v - %s - %v - %s\n", route, tail, handler, r.URL.Path)
+	if handler != nil {
+		rw.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		rw.Header().Set("Access-Control-Allow-Credentials", "true")
+		rw.Header().Set("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT")
+		rw.Header().Set("Access-Control-Allow-Headers", "Content-Type,WithCredentials,Authorization,Cookie")
 
-	if handler := route.GetHandler(r.Method); handler != nil {
 		handler.ServeHTTP(rw, r)
+	} else if r.Method == "OPTIONS" {
+		rw.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		rw.Header().Set("Access-Control-Allow-Credentials", "true")
+		rw.Header().Set("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT")
+		rw.Header().Set("Access-Control-Allow-Headers", "Content-Type,WithCredentials,Authorization,Cookie")
+
+		rw.WriteHeader(200)
 	} else {
-		http.Error(rw, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		http.Error(rw, http.StatusText(http.StatusMethodNotAllowed)+" in ServeHTTPsrvr at dispatcher_dyn.go:194", http.StatusMethodNotAllowed)
+		rw.RespondJSON(rw)
+		rw.RespondJSON(r.Method)
+		rw.RespondJSON(route)
+		rw.RespondJSON(handler)
 	}
 }
 
-func MethodNotAllowed(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-}
+// func MethodNotAllowed(w http.ResponseWriter, r *http.Request) {
+// 	http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+// }

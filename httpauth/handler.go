@@ -49,13 +49,19 @@ func (a *Auth) SigninHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+	fmt.Printf(" * account -> %v\n", account)
 
-	a.Login(w, account)
+	token := a.Login(w, account)
 
 	// http.Redirect(w, r, "/home", 301)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(credentials.Username))
+	type foo struct {
+		Username string
+		JWT      string
+	}
+	bytes, _ := json.MarshalIndent(foo{credentials.Username, token}, "", "    ")
+	w.Write(bytes)
 }
 
 func (a *Auth) WelcomeHandler(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +80,7 @@ func (a *Auth) SignoutHandler(w http.ResponseWriter, r *http.Request) {
 		// Secure:   true,
 		HttpOnly: true,
 	}
-
+	fmt.Println("SignoutHandler")
 	http.SetCookie(w, c)
 	// http.Redirect(w, r, "/login", 302)
 }

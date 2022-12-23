@@ -1,6 +1,9 @@
 package errors
 
-import "fmt"
+import (
+	stderrors "errors"
+	"fmt"
+)
 
 func New(msg string, vals ...interface{}) error {
 
@@ -72,4 +75,11 @@ func Code(err error) int {
 		code = errWithCode.Code()
 	}
 	return code
+}
+
+func Is(err, target error) bool {
+	return stderrors.Is(err, target)
+}
+func As(err error, target interface{}) bool {
+	return stderrors.As(err, target)
 }

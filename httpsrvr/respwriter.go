@@ -82,23 +82,17 @@ func (rw *ResponseWriter) Respond(data interface{}, err error) {
 
 func (rw *ResponseWriter) RespondJSON(data interface{}) error {
 
-	var (
-		bytes []byte
-		err   error
-	)
+	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
 
+	enc := json.NewEncoder(rw)
 	if rw.pretty {
-		bytes, err = json.MarshalIndent(data, "", "    ")
-	} else {
-		bytes, err = json.Marshal(data)
+		enc.SetIndent("", "    ")
 	}
+	err := enc.Encode(data)
 	if err != nil {
-		// rw.RespondError(err)
 		return errors.Wrap(err, "Failed to marshal response")
 	}
 
-	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
-	rw.Write(bytes)
 	return nil
 }
 
@@ -108,6 +102,10 @@ func (rw *ResponseWriter) RespondError(err error) {
 	rw.err = err
 
 	code := errors.Code(err)
+	fmt.Println("RespondError", code)
+	if code == 0 {
+		code = 500
+	}
 
 	if rw.debug {
 		http.Error(rw, fmt.Sprintf("%#v", err), code)

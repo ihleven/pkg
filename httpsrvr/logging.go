@@ -1,11 +1,13 @@
 package httpsrvr
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/rs/zerolog"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -103,4 +105,50 @@ func (s *httpServer) LogRequest(r *http.Request, id string, reqnum uint64, start
 
 	// 	s.LogRequest(r, reqid, reqnum, start, rw, name)
 	// }(start, reqnum, reqid, route.name)
+}
+
+var (
+	Reset  = "\033[0m"
+	Bold   = "\033[1m"
+	Red    = "\033[31m"
+	Green  = "\033[32m"
+	Yellow = "\033[33m"
+	Blue   = "\033[34m"
+	Purple = "\033[35m"
+	Cyan   = "\033[36m"
+	Gray   = "\033[37m"
+	White  = "\033[97m"
+)
+
+// Colorize wraps a given message in a given color.
+//
+// Example:
+//     println(color.Colorize(color.Red, "This is red"))
+func Colorize(color, s string) string {
+	return color + s + Reset
+}
+
+var zerologger zerolog.Logger
+
+func init() {
+	zerologger = zerolog.New(os.Stderr).With().Logger()
+}
+func (s *httpServer) zerologRequest(r *http.Request, id string, reqnum uint64, start time.Time, rw *ResponseWriter, name string) {
+	duration := time.Since(start)
+
+	// fmt.Printf("%srequest %d: %s %s => %d (%d bytes, %v)", Purple, reqnum, id, r.URL.Path, rw.statusCode, rw.Count(), duration)
+	fmt.Println(Purple)
+	zerologger.Log().Uint(
+		"reqnum", uint(reqnum),
+	).Str(
+		"name", name,
+	).Str(
+		"reqid", id,
+	).Str(
+		"method", r.Method,
+	).Str(
+		"path", r.URL.Path,
+	).Msgf("request %d: %s %s => %d (%d bytes, %v)", reqnum, id, r.URL.Path, rw.statusCode, rw.Count(), duration)
+	fmt.Println(Reset)
+
 }
