@@ -41,6 +41,10 @@ func (e *Error) Code() int {
 			return a.code
 		}
 	}
+	type coder interface{ Code() int }
+	if ewc, ok := e.cause.(coder); ok {
+		return ewc.Code()
+	}
 	return 500
 }
 
