@@ -99,6 +99,28 @@ func (d *Drive) Meta(drivepath string, token *Token) (*Meta, error) {
 	return meta, nil
 }
 
+// Link
+func (d *Drive) Link(drivepath string, token *Token) (string, error) {
+
+	fullpath := d.fullpath(drivepath, token.Alias)
+
+	body, err := d.client.Request("GET", "/file/url", url.Values{"path": []string{fullpath}}, nil, token.AccessToken)
+	if err != nil {
+		return "", errors.Wrap(err, "Error in get file/url request")
+	}
+	defer body.Close()
+	bytes, err := io.ReadAll(body)
+	var response struct {
+		URL string `json:"url"`
+	}
+	json.Unmarshal(bytes, &response)
+	if err != nil {
+		return "", errors.Wrap(err, "Couldn't decode response body")
+	}
+
+	return response.URL, nil
+}
+
 func (d *Drive) Mkdir(drivepath string, token *Token) (*Meta, error) {
 
 	fullpath := d.fullpath(drivepath, token.Alias)

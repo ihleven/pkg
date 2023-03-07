@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	gopath "path"
 	"strings"
@@ -246,6 +247,80 @@ func (d *Drive) Serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (d *Drive) ServePartial(w http.ResponseWriter, r *http.Request) {
+
+	token := d.Token(r.Context().Value("username").(string))
+	if token == nil {
+		http.Error(w, "Couldn‘t get valid auth token", http.StatusUnauthorized)
+		return
+	}
+
+	params := r.URL.Query()
+	params.Set("path", d.fullpath(r.URL.Path, token.Alias))
+
+	// body, err := d.client.Request("GET", "/file", params, nil, token.AccessToken)
+	// if err != nil {
+	// 	http.Error(w, err.Error(), errors.Code(err))
+	// 	return
+	// }
+	// defer body.Close()
+
+	request, err := http.NewRequest("GET", "https://api.hidrive.strato.com/2.1/file"+"?"+params.Encode(), nil)
+	if err != nil {
+		// return nil, errors.Wrap(err, "Failed to create new hidrive client http request")
+		http.Error(w, errors.Wrap(err, "Failed to create new hidrive client http request").Error(), 500)
+		return
+	}
+	for header, values := range r.Header {
+		for _, value := range values {
+			request.Header.Add(header, value)
+			fmt.Println("header:", header, value)
+		}
+	}
+	request.Header.Set("Authorization", "Bearer "+token.AccessToken)
+
+	response, err := d.client.Do(request)
+	if err != nil {
+		if os.IsTimeout(err) {
+			// return nil, errors.Wrap(err, "hidrive client request timeout exceeded") // &HiDriveError{ECode: 500, EMessage: "client timeout exceeded"}
+		}
+		fmt.Println(" !!! HiDrive request error: ", err)
+		// return nil, errors.Wrap(err, "HTTP client couldn't Do request")
+		http.Error(w, errors.Wrap(err, "HTTP client couldn't Do request").Error(), 500)
+		return
+	}
+	// fmt.Println("client response:", response)
+	if response.StatusCode < 300 {
+		// return response.Body, nil
+
+	} else {
+		hidriveError := NewHidriveError(response)
+		if hidriveError == nil {
+			// return nil, errors.Wrap(err, "Couldn‘t parse hidrive error") // err muss hier nil sein
+			http.Error(w, errors.Wrap(err, "Couldn‘t parse hidrive error").Error(), 500)
+			return
+		}
+		// return nil, hidriveError
+		http.Error(w, hidriveError.Error(), 500)
+		return
+	}
+
+	// http.ServeContent(w, r, "", modtime time.Time, content io.ReadSeeker)
+
+	h := w.Header()
+	for header, values := range response.Header {
+		// for _, value := range values {
+		h.Set(header, values[0])
+		fmt.Println("response header:", header, values)
+		// }
+	}
+
+	_, err = io.Copy(w, response.Body)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+	}
+}
+
 func (d *Drive) FileContent(w http.ResponseWriter, r *http.Request) {
 
 	token := d.Token(r.Context().Value("username").(string))
@@ -284,11 +359,11 @@ func (d *Drive) FileContent(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeHTTP has 3 modes:
-// 1) GET without params shows a button calling ServeHTTP with the authorize param
-//    and a form POSTing ServeHTTP with a code
-// 2) GET with authorize/{username} param redirects to the hidrive /client/authorize endpoint where a user {username} can authorize the app.
-//    This endpoint will call registered token-callback which is not reachable locally ( => copy code and use form from 1)
-// 3) POSTing username and code triggering oauth2/token endpoint generating an access token
+//  1. GET without params shows a button calling ServeHTTP with the authorize param
+//     and a form POSTing ServeHTTP with a code
+//  2. GET with authorize/{username} param redirects to the hidrive /client/authorize endpoint where a user {username} can authorize the app.
+//     This endpoint will call registered token-callback which is not reachable locally ( => copy code and use form from 1)
+//  3. POSTing username and code triggering oauth2/token endpoint generating an access token
 func (m *AuthManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	enc := json.NewEncoder(w)
